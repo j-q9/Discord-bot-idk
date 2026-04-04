@@ -4,13 +4,14 @@ import anthropic
 import asyncio
 import json
 import re
+import os
 from datetime import datetime, timedelta
 
 # ============================================================
 # CONFIG
 # ============================================================
-DISCORD_TOKEN = "YOUR_DISCORD_BOT_TOKEN"
-ANTHROPIC_API_KEY = "YOUR_ANTHROPIC_API_KEY"
+DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 PREFIX = "!"
 
 # ============================================================
