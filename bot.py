@@ -6,7 +6,10 @@ import re
 import os
 import urllib.request
 import urllib.error
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+def utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 # ============================================================
 # CONFIG
@@ -30,6 +33,9 @@ bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 # STATE
 # ============================================================
 conversation_history = {}
+user_last_called = {}   # user_id -> datetime of last !ai call
+daily_request_count = {"date": utcnow().date(), "count": 0}
+COOLDOWN_SECONDS = 30   # minimum seconds between !ai calls per user
 
 # ============================================================
 # SYSTEM PROMPT
@@ -120,31 +126,30 @@ def get_server_snapshot(guild):
     boost_level = guild.premium_tier
     boost_count = guild.premium_subscription_count or 0
     total_members = guild.member_count
-    online = sum(1 for m in guild.members if m.status != discord.Status.offline) if guild.members else "N/A"
     bots = sum(1 for m in guild.members if m.bot)
-    humans = total_members - bots
-    text_channels = [c.name for c in guild.text_channels]
-    voice_channels = [c.name for c in guild.voice_channels]
-    categories = [c.name for c in guild.categories]
-    roles = [r.name for r in guild.roles if r.name != "@everyone"]
+    # Limit channel/role lists to avoid bloating token usage
+    text_channels = [c.name for c in guild.text_channels][:20]
+    voice_channels = [c.name for c in guild.voice_channels][:10]
+    roles = [r.name for r in guild.roles if r.name != "@everyone"][:20]
     owner = guild.owner.display_name if guild.owner else "Unknown"
-    created = guild.created_at.strftime("%B %d, %Y")
-    boosts_needed = [2,7,14][boost_level] - boost_count if boost_level < 3 else "Max level reached"
 
-    return f"""
-=== LIVE SERVER DATA ===
-Server: {guild.name} | Owner: {owner} | Created: {created}
-Boosts: {boost_count} (Level {boost_level}) | Need {boosts_needed} more for next level
-Members: {total_members} total ({humans} humans, {bots} bots, {online} online)
-Text channels ({len(text_channels)}): {", ".join(text_channels) or "none"}
-Voice channels ({len(voice_channels)}): {", ".join(voice_channels) or "none"}
-Categories: {", ".join(categories) or "none"}
-Roles ({len(roles)}): {", ".join(roles) or "none"}
-Emojis: {len(guild.emojis)} | Verification: {guild.verification_level}
-=== END SERVER DATA ===
-"""
+    return (
+        f"[SERVER: {guild.name} | Owner: {owner} | Members: {total_members} ({bots} bots) | "
+        f"Boosts: {boost_count} (Lvl {boost_level}) | "
+        f"Text: {', '.join(text_channels) or 'none'} | "
+        f"Voice: {', '.join(voice_channels) or 'none'} | "
+        f"Roles: {', '.join(roles) or 'none'}]"
+    )
 
 async def ask_gemini(user_id, user_message, guild=None):
+    # Track daily usage and reset counter each new day
+    today = utcnow().date()
+    if daily_request_count["date"] != today:
+        daily_request_count["date"] = today
+        daily_request_count["count"] = 0
+    daily_request_count["count"] += 1
+    print(f"[Gemini] Request #{daily_request_count['count']} today by user {user_id}")
+
     snapshot = get_server_snapshot(guild) if guild else ""
     full_message = f"{snapshot}\nUser: {user_message}" if snapshot else user_message
 
@@ -300,7 +305,7 @@ async def execute_action(guild, action_obj, channel):
             ch = discord.utils.get(guild.text_channels, name=ch_name)
             if not ch:
                 ch = await guild.create_text_channel(ch_name)
-            end_time = datetime.utcnow() + timedelta(hours=float(data.get("duration_hours", 24)))
+            end_time = utcnow() + timedelta(hours=float(data.get("duration_hours", 24)))
             embed = discord.Embed(
                 title=f"🎉 GIVEAWAY: {data.get('prize','Mystery Prize')}",
                 description=(
@@ -332,7 +337,7 @@ async def execute_action(guild, action_obj, channel):
             if not ch:
                 ch = await guild.create_text_channel(data.get("channel_name","announcements"))
             color_str = data.get("color_hex","5865F2").replace("#","").replace("0x","")
-            embed = discord.Embed(title=data.get("title","📢 Announcement"), description=data.get("message",""), color=discord.Color(int(color_str,16)), timestamp=datetime.utcnow())
+            embed = discord.Embed(title=data.get("title","📢 Announcement"), description=data.get("message",""), color=discord.Color(int(color_str,16)), timestamp=utcnow())
             await ch.send(embed=embed)
             await channel.send(f"📢 Announcement sent to **#{ch.name}**!")
 
@@ -372,7 +377,7 @@ async def on_member_join(member):
             title=f"👋 Welcome to {member.guild.name}!",
             description=f"Hey {member.mention}, glad to have you!\nYou are member **#{member.guild.member_count}**.",
             color=discord.Color.green(),
-            timestamp=datetime.utcnow()
+            timestamp=utcnow()
         )
         embed.set_thumbnail(url=member.display_avatar.url)
         await channel.send(embed=embed)
@@ -394,6 +399,18 @@ async def on_message(message):
 @bot.command(name="ai", aliases=["agent", "a"])
 async def ai_agent(ctx, *, user_input: str):
     user_id = ctx.author.id
+
+    # Per-user cooldown check
+    now = utcnow()
+    last = user_last_called.get(user_id)
+    if last:
+        elapsed = (now - last).total_seconds()
+        if elapsed < COOLDOWN_SECONDS:
+            remaining = int(COOLDOWN_SECONDS - elapsed)
+            await ctx.send(f"⏳ Please wait **{remaining}s** before using `!ai` again.")
+            return
+    user_last_called[user_id] = now
+
     async with ctx.typing():
         reply = await ask_gemini(user_id, user_input, guild=ctx.guild)
         action_obj = extract_json_action(reply)
@@ -409,6 +426,18 @@ async def ai_agent(ctx, *, user_input: str):
 async def reset(ctx):
     conversation_history.pop(ctx.author.id, None)
     await ctx.send("🔄 Conversation reset!")
+
+@bot.command(name="usage")
+@commands.has_permissions(administrator=True)
+async def usage(ctx):
+    today = daily_request_count["date"]
+    count = daily_request_count["count"]
+    embed = discord.Embed(title="📊 Gemini API Usage", color=discord.Color.blurple())
+    embed.add_field(name="Date (UTC)", value=str(today), inline=True)
+    embed.add_field(name="Requests Today", value=str(count), inline=True)
+    embed.add_field(name="Free Tier Limit", value="1,500 / day", inline=True)
+    embed.set_footer(text="Counter resets at midnight UTC")
+    await ctx.send(embed=embed)
 
 # ============================================================
 # DIRECT MOD COMMANDS
