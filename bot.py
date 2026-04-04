@@ -161,23 +161,56 @@ async def ask_gemini(user_id, user_message, guild=None):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
     req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
 
-    try:
-        with urllib.request.urlopen(req) as response:
-            result = json.loads(response.read().decode("utf-8"))
-            reply = result["candidates"][0]["content"]["parts"][0]["text"]
-            # Save clean history (without snapshot)
-            get_history(user_id).append({"role": "user", "parts": [{"text": user_message}]})
-            get_history(user_id).append({"role": "model", "parts": [{"text": reply}]})
-            if len(conversation_history[user_id]) > 30:
-                conversation_history[user_id] = conversation_history[user_id][-30:]
-            return reply
-    except urllib.error.HTTPError as e:
-        error_body = e.read().decode("utf-8")
-        print(f"Gemini error: {e.code} - {error_body}")
-        return f"❌ Gemini API error {e.code}. Check your GEMINI_API_KEY in Secrets."
-    except Exception as e:
-        print(f"Error: {e}")
-        return f"❌ Something went wrong: {e}"
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req) as response:
+                result = json.loads(response.read().decode("utf-8"))
+                reply = result["candidates"][0]["content"]["parts"][0]["text"]
+                # Save clean history (without snapshot)
+                get_history(user_id).append({"role": "user", "parts": [{"text": user_message}]})
+                get_history(user_id).append({"role": "model", "parts": [{"text": reply}]})
+                if len(conversation_history[user_id]) > 30:
+                    conversation_history[user_id] = conversation_history[user_id][-30:]
+                return reply
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode("utf-8")
+            print(f"Gemini error: {e.code} - {error_body}")
+            if e.code == 429:
+                # Parse retry delay from response if available
+                try:
+                    err_data = json.loads(error_body)
+                    details = err_data.get("error", {}).get("details", [])
+                    retry_delay = 60
+                    for d in details:
+                        if d.get("@type", "").endswith("RetryInfo"):
+                            delay_str = d.get("retryDelay", "60s")
+                            retry_delay = int(delay_str.replace("s", "").split(".")[0])
+                            break
+                    # Check if daily quota is gone (limit: 0)
+                    daily_exhausted = any(
+                        v.get("quotaId", "").endswith("PerDay") or "PerDay" in v.get("quotaId", "")
+                        for detail in details
+                        for v in detail.get("violations", [])
+                    )
+                    if daily_exhausted:
+                        return "❌ The Gemini free tier daily quota is exhausted. Please wait until tomorrow or enable billing at aistudio.google.com."
+                except Exception:
+                    retry_delay = 60
+                if attempt < 2:
+                    print(f"Rate limited. Retrying in {retry_delay}s...")
+                    await asyncio.sleep(retry_delay)
+                    continue
+                return f"❌ Gemini is rate limiting requests right now. Please wait a minute and try again."
+            elif e.code == 401 or e.code == 403:
+                return "❌ Invalid or unauthorized GEMINI_API_KEY. Please check your key in Secrets."
+            elif e.code == 404:
+                return "❌ Gemini model not found. The model name may be outdated."
+            else:
+                return f"❌ Gemini API error {e.code}. Please try again later."
+        except Exception as e:
+            print(f"Error: {e}")
+            return f"❌ Something went wrong: {e}"
+    return "❌ Gemini is rate limiting requests right now. Please wait a minute and try again."
 
 # ============================================================
 # ACTION EXECUTOR
