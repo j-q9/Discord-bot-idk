@@ -14,6 +14,7 @@ def utcnow():
 # CONFIG
 # ============================================================
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 PREFIX = "!"
 COOLDOWN_SECONDS = 5
 
@@ -32,6 +33,7 @@ bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 # STATE
 # ============================================================
 user_last_called = {}
+conversation_history = {}  # user_id -> list of {role, content} messages
 
 # ============================================================
 # BUILT-IN AI RESPONSES
@@ -79,7 +81,74 @@ RESPONSES = {
 }
 
 # ============================================================
-# TOPIC KEYWORD MAP
+# GROQ AI — real language model, free tier (14,400 req/day)
+# Get your free key at: https://console.groq.com
+# ============================================================
+import urllib.request
+import urllib.error
+
+GROQ_SYSTEM_PROMPT = (
+    "You are a friendly, witty Discord bot assistant. "
+    "You can chat about anything — topics, questions, opinions, stories, jokes, advice, whatever the user says. "
+    "Keep replies short and conversational (1-3 sentences max). "
+    "Use casual, friendly language. Occasionally use emojis where natural. "
+    "If someone asks you to do something in their Discord server (create channel, ban user, etc.), "
+    "tell them to use the `!ai` command with server action keywords, for example: `!ai create channel called general`."
+)
+
+async def ask_groq(user_id, message):
+    if not GROQ_API_KEY:
+        return "⚠️ No GROQ_API_KEY set. Add it in Secrets to enable AI chat!"
+
+    # Build conversation history for context (last 10 messages)
+    history = conversation_history.get(user_id, [])
+    messages = [{"role": "system", "content": GROQ_SYSTEM_PROMPT}]
+    messages += history[-10:]
+    messages.append({"role": "user", "content": message})
+
+    payload = json.dumps({
+        "model": "llama-3.1-8b-instant",
+        "messages": messages,
+        "max_tokens": 200,
+        "temperature": 0.8,
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        "https://api.groq.com/openai/v1/chat/completions",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+            reply = result["choices"][0]["message"]["content"].strip()
+            # Save to history
+            if user_id not in conversation_history:
+                conversation_history[user_id] = []
+            conversation_history[user_id].append({"role": "user", "content": message})
+            conversation_history[user_id].append({"role": "assistant", "content": reply})
+            # Trim history to last 20 messages
+            conversation_history[user_id] = conversation_history[user_id][-20:]
+            return reply
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8")
+        print(f"Groq error {e.code}: {body}")
+        if e.code == 429:
+            return "⏳ I'm being rate-limited right now. Try again in a moment!"
+        if e.code in (401, 403):
+            return "❌ Invalid GROQ_API_KEY. Please check your Secrets."
+        return f"❌ AI error ({e.code}). Try again later."
+    except Exception as e:
+        print(f"Groq error: {e}")
+        return "❌ Couldn't reach the AI right now. Try again in a moment!"
+
+# ============================================================
+# TOPIC KEYWORD MAP  (kept for instant server-info replies)
 # ============================================================
 TOPIC_RESPONSES = {
     ("cat", "cats", "kitten", "kitty"): [
@@ -471,7 +540,7 @@ def extract_reason(text):
 # ============================================================
 # LOCAL AI PROCESSOR
 # ============================================================
-async def process_message(user_input, guild=None, bot_latency=None):
+async def process_message(user_id, user_input, guild=None, bot_latency=None):
     """
     Returns (text_reply, action_obj)
     action_obj is either None, a dict (Discord action), or "help"
@@ -636,8 +705,9 @@ async def process_message(user_input, guild=None, bot_latency=None):
             }}
         return "Please specify trigger and response. Example: `!ai create command !hello says Hello there!`", None
 
-    # Freeform fallback — respond to anything conversationally
-    return handle_freeform(user_input), None
+    # Freeform fallback — real AI via Groq (Llama 3.1)
+    reply = await ask_groq(user_id, user_input)
+    return reply, None
 
 # ============================================================
 # ACTION EXECUTOR
@@ -849,7 +919,7 @@ async def ai_agent(ctx, *, user_input: str):
     user_last_called[user_id] = now
 
     async with ctx.typing():
-        text_reply, action_obj = await process_message(user_input, guild=ctx.guild, bot_latency=bot.latency)
+        text_reply, action_obj = await process_message(user_id, user_input, guild=ctx.guild, bot_latency=bot.latency)
 
         if action_obj == "help":
             await ctx.invoke(bot.get_command("commands"))
@@ -863,7 +933,8 @@ async def ai_agent(ctx, *, user_input: str):
 
 @bot.command(name="reset")
 async def reset(ctx):
-    await ctx.send("🔄 Conversation reset!")
+    conversation_history.pop(ctx.author.id, None)
+    await ctx.send("🔄 Conversation reset! I've forgotten our chat history.")
 
 # ============================================================
 # DIRECT MOD COMMANDS
