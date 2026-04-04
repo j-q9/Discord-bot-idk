@@ -79,6 +79,239 @@ RESPONSES = {
 }
 
 # ============================================================
+# TOPIC KEYWORD MAP
+# ============================================================
+TOPIC_RESPONSES = {
+    ("cat", "cats", "kitten", "kitty"): [
+        "Cats are awesome! 🐱 Do you have one?",
+        "Meow! 🐱 Cats are so independent and cool.",
+        "I'm a bot, but if I had a pet it'd definitely be a cat! 😄",
+    ],
+    ("dog", "dogs", "puppy", "pup"): [
+        "Dogs are the best! 🐶 So loyal and friendly.",
+        "Man's best friend! 🐕 Do you have a dog?",
+        "Aww, dogs are amazing! What breed are you thinking of?",
+    ],
+    ("food", "eat", "eating", "hungry", "pizza", "burger", "sushi", "chicken"): [
+        "Ooh, food talk! 🍕 What's your favourite thing to eat?",
+        "Now I wish I could eat! 🤖 What are you having?",
+        "Sounds delicious! Food is one of the best things in life. 😄",
+    ],
+    ("game", "gaming", "games", "minecraft", "fortnite", "roblox", "valorant", "cod"): [
+        "Gaming! 🎮 What are you playing lately?",
+        "Nice! Gaming is great. What's your favourite game?",
+        "A fellow gamer! 🎮 PC, console, or mobile?",
+    ],
+    ("music", "song", "songs", "listen", "spotify", "playlist"): [
+        "Music is life! 🎵 What are you listening to?",
+        "Nice taste! 🎶 What genre do you like?",
+        "I'd love to have ears to hear music! 🤖🎵 What's your favourite artist?",
+    ],
+    ("movie", "movies", "film", "films", "watch", "netflix", "cinema"): [
+        "Movies are great! 🎬 What are you watching?",
+        "Good pick! 🎥 What genre do you prefer?",
+        "Love the cinema! 🍿 What's your all-time favourite movie?",
+    ],
+    ("school", "study", "studying", "homework", "exam", "test", "college", "university"): [
+        "School life! 📚 How's studying going?",
+        "Hang in there! 💪 Study hard and it'll pay off.",
+        "Learning is valuable! 📖 What subject are you studying?",
+    ],
+    ("sport", "sports", "football", "soccer", "basketball", "cricket", "tennis"): [
+        "Sports fan! ⚽ What's your favourite sport?",
+        "Nice! 🏆 Do you play or just watch?",
+        "Sports are amazing! 🏅 What team do you support?",
+    ],
+    ("work", "job", "working", "boss", "office", "career"): [
+        "Work life! 💼 How's it going?",
+        "The grind! 💪 Hope work is treating you well.",
+        "Working hard I see! 🧑‍💻 Take breaks too — it's important!",
+    ],
+    ("sleep", "tired", "sleepy", "nap", "insomnia", "bed"): [
+        "Get some rest! 😴 Sleep is super important.",
+        "Tired huh? 😪 Hope you get a good sleep soon!",
+        "Same... if only bots could sleep! 🤖💤",
+    ],
+    ("money", "rich", "broke", "cash", "earn", "income"): [
+        "Money talk! 💸 Saving up for something?",
+        "The hustle is real! 💰 Hope things pick up for you.",
+        "Money makes the world go round, as they say! 💵",
+    ],
+    ("bored", "boring", "nothing to do"): [
+        "Bored? Try `!ai tell me a joke` 😄",
+        "Boredom is a sign you need a new hobby! 🎮🎨🎵 What do you usually enjoy?",
+        "I'm here to chat! Ask me anything 😊",
+    ],
+    ("love", "crush", "relationship", "dating", "girlfriend", "boyfriend"): [
+        "Ooh, relationship talk! ❤️ That's sweet.",
+        "Love is a beautiful thing! ❤️",
+        "Aww! Hope it's going well 😊",
+    ],
+    ("happy", "excited", "great", "amazing", "wonderful", "awesome"): [
+        "That's great to hear! 😄 Keep that energy!",
+        "Love the positivity! 🙌",
+        "Awesome! Good vibes only 🎉",
+    ],
+    ("sad", "upset", "depressed", "unhappy", "lonely", "cry", "crying"): [
+        "Aw, I'm sorry to hear that. 💙 Hope things get better soon!",
+        "It's okay to feel that way. Things will turn around! 💙",
+        "Sending good vibes your way! 💙 You've got this.",
+    ],
+    ("angry", "mad", "frustrated", "annoyed", "rage"): [
+        "Take a breath! 😤 Hope whatever's bothering you gets sorted.",
+        "That's frustrating — hope it gets better soon!",
+        "Oof, sounds rough. 😤 Want to vent?",
+    ],
+    ("discord", "server", "bot"): [
+        "That's my home! 🤖 What do you want to do with your server?",
+        "Discord is great! I can help manage your server — try `!commands`.",
+        "Love Discord! Use `!commands` to see everything I can do for your server.",
+    ],
+    ("weather", "rain", "sunny", "cold", "hot", "snow"): [
+        "I can't check the weather, but I hope it's nice where you are! ☀️",
+        "Weather talk! 🌤️ Is it nice outside?",
+        "Hope the weather is good! ☀️ I'm stuck inside the server anyway 😄",
+    ],
+}
+
+# ============================================================
+# FREEFORM CONVERSATION HANDLER
+# ============================================================
+def handle_freeform(text):
+    t = text.lower().strip()
+
+    # Pattern: "I like/love/enjoy X"
+    m = re.search(r"i (like|love|enjoy|adore|am into|am obsessed with) (.+)", t)
+    if m:
+        thing = m.group(2).rstrip("!. ")
+        return random.choice([
+            f"Nice, {thing} is great! 😄 Tell me more.",
+            f"Oh cool, {thing}! I can see why you'd enjoy that 😊",
+            f"Good taste! {thing.capitalize()} is awesome 🙌",
+            f"Love that you're into {thing}! What do you like most about it?",
+        ])
+
+    # Pattern: "I hate/dislike/can't stand X"
+    m = re.search(r"i (hate|dislike|can't stand|don't like|dont like|am not into) (.+)", t)
+    if m:
+        thing = m.group(2).rstrip("!. ")
+        return random.choice([
+            f"Fair enough! Not everyone's into {thing}.",
+            f"Understandable — {thing} isn't for everyone!",
+            f"Ha, noted! Not a fan of {thing} then 😄",
+        ])
+
+    # Pattern: "I am/I'm X" (feelings/states)
+    m = re.search(r"i(?:'m| am) (feeling |so |really |very )?(.+)", t)
+    if m:
+        state = m.group(2).rstrip("!. ")
+        positive = any(w in state for w in ["happy", "good", "great", "excited", "awesome", "amazing", "well", "fine"])
+        negative = any(w in state for w in ["sad", "bad", "tired", "bored", "upset", "angry", "stressed", "lonely"])
+        if positive:
+            return random.choice([
+                f"That's awesome — glad you're {state}! 😄",
+                f"Love to hear it! Keep that energy 🙌",
+                f"Yay! 🎉 {state.capitalize()} looks good on you!",
+            ])
+        elif negative:
+            return random.choice([
+                f"Aw, sorry you're {state}. Hope things look up soon 💙",
+                f"That's rough — hang in there! 💙",
+                f"Hope you feel better soon! 💙 I'm here if you want to chat.",
+            ])
+        return random.choice([
+            f"Oh, you're {state}? Tell me more!",
+            f"Got it — {state}! How's that going?",
+        ])
+
+    # Pattern: "What is/are X"
+    m = re.search(r"what(?:'s| is| are) (.+?)\??$", t)
+    if m:
+        subject = m.group(1).strip()
+        return random.choice([
+            f"Great question about {subject}! I'm a Discord bot so my knowledge is limited — try Googling it for a full answer 🔍",
+            f"Hmm, {subject}... I know a bit but you'd get a better answer searching online! 🔍",
+            f"I'd love to explain {subject} fully, but I'm a bot — a quick search will give you the best answer! 😊",
+        ])
+
+    # Pattern: "Who is X"
+    m = re.search(r"who(?:'s| is) (.+?)\??$", t)
+    if m:
+        person = m.group(1).strip()
+        return random.choice([
+            f"I've heard of {person}! For the full story, a quick Google search is your best bet 🔍",
+            f"Good question! I'm a Discord bot, so for {person} details, try searching online 🔍",
+        ])
+
+    # Pattern: "Do you like/know/think X"
+    m = re.search(r"do you (like|know|think|enjoy|prefer|use|play|watch|listen) (.+?)\??$", t)
+    if m:
+        verb = m.group(1)
+        thing = m.group(2).strip()
+        if verb in ("like", "enjoy", "prefer"):
+            return random.choice([
+                f"As a bot I can't really {verb} things, but {thing} seems interesting! What about you?",
+                f"I'd say yes if I could — {thing} sounds great! Do you {verb} it?",
+            ])
+        elif verb == "know":
+            return random.choice([
+                f"I know a bit about {thing}! Ask me something specific 😊",
+                f"Some things about {thing}, yeah! What do you want to know?",
+            ])
+        return random.choice([
+            f"Interesting question! What do *you* think about {thing}?",
+            f"As a bot I'm not sure, but I'd love to hear your take on {thing}!",
+        ])
+
+    # Pattern: "What do you think about X"
+    m = re.search(r"what do you think (?:about|of) (.+?)\??$", t)
+    if m:
+        topic = m.group(1).strip()
+        return random.choice([
+            f"Hmm, {topic}... I think it depends on your perspective! What's your take?",
+            f"Interesting topic — {topic}! I'm a bot so no strong opinions, but I'm curious what you think 😊",
+            f"I'd say {topic} has its ups and downs! What's your opinion?",
+        ])
+
+    # Pattern: "Can you X"
+    m = re.search(r"can you (.+?)\??$", t)
+    if m:
+        action = m.group(1).strip()
+        server_actions = any(w in action for w in ["ban", "kick", "create", "delete", "warn", "send", "make", "set"])
+        if server_actions:
+            return f"Yes I can! Try: `!ai {action}` with more details and I'll get it done 💪"
+        return random.choice([
+            f"I'll do my best! Try asking me directly: `!ai {action}`",
+            f"Maybe! Give it a shot: `!ai {action}` 😄",
+        ])
+
+    # Pattern: questions ending in "?"
+    if t.rstrip().endswith("?"):
+        return random.choice([
+            "Great question! I'm a Discord bot so my answers are limited, but I'll do my best 😊",
+            "Hmm, tough one! I don't have all the answers but happy to chat 😄",
+            "Good question! What made you think of that?",
+            "Interesting! I'm not 100% sure, but I'd love to discuss it further 😊",
+        ])
+
+    # Topic keyword matching
+    for keywords, responses in TOPIC_RESPONSES.items():
+        if any(kw in t for kw in keywords):
+            return random.choice(responses)
+
+    # Generic statement responses
+    return random.choice([
+        "That's interesting! Tell me more 😊",
+        "Oh really? I'd love to hear more about that!",
+        "Nice! What else is on your mind?",
+        "Interesting! Keep going, I'm listening 👂",
+        "I see! Anything else you want to talk about?",
+        "Ha, that's something! 😄 What's up with you today?",
+        "Cool! You can also use `!commands` if you want to do something in the server.",
+        "Word! 😄 I'm here to chat or help with server stuff — whatever you need.",
+    ])
+
+# ============================================================
 # INTENT DETECTION
 # ============================================================
 def detect_intent(text):
@@ -403,8 +636,8 @@ async def process_message(user_input, guild=None, bot_latency=None):
             }}
         return "Please specify trigger and response. Example: `!ai create command !hello says Hello there!`", None
 
-    # Default fallback
-    return random.choice(RESPONSES["unknown"]), None
+    # Freeform fallback — respond to anything conversationally
+    return handle_freeform(user_input), None
 
 # ============================================================
 # ACTION EXECUTOR
