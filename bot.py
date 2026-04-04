@@ -1,17 +1,18 @@
 import discord
 from discord.ext import commands
-import anthropic
 import asyncio
 import json
 import re
 import os
+import urllib.request
+import urllib.error
 from datetime import datetime, timedelta
 
 # ============================================================
 # CONFIG
 # ============================================================
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "")
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 PREFIX = "!"
 
 # ============================================================
@@ -24,19 +25,18 @@ intents.guilds = True
 intents.presences = True
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
-claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 # ============================================================
 # STATE
 # ============================================================
-conversation_history = {}  # user_id -> list of messages
+conversation_history = {}
 
 # ============================================================
 # SYSTEM PROMPT
 # ============================================================
 SYSTEM_PROMPT = """You are an AI Discord Server Manager. You help server owners manage their Discord server through natural conversation.
 
-Every message from the user includes a live snapshot of their server data at the top (boost count, members, channels, roles, etc.). Use this data to answer ANY question about the server accurately. If they ask "how many boosts do I have?" — read it from the snapshot and answer directly. If they ask about members, roles, channels — same thing. Always use the live data, never guess.
+Every message from the user includes a live snapshot of their server data at the top (boost count, members, channels, roles, etc.). Use this data to answer ANY question about the server accurately. If they ask "how many boosts do I have?" — read it from the snapshot and answer directly. Always use the live data, never guess.
 
 You can perform these actions:
 - create_channel: Create text/voice/category channels
@@ -57,7 +57,7 @@ You can perform these actions:
 CONVERSATION RULES:
 1. When a user asks you to do something, figure out what info you need.
 2. Ask for ONE missing piece of info at a time in a natural way.
-3. As the user answers, remember everything they've said.
+3. As the user answers, remember everything they said.
 4. Once you have ALL required info, immediately output ONLY this JSON (no extra text after it):
 
 ```json
@@ -85,20 +85,7 @@ REQUIRED INFO per action:
 - set_slowmode: channel_name, seconds
 - create_custom_command: trigger, response
 
-EXAMPLE CONVERSATION:
-User: "create a giveaway for Nitro"
-You: "What channel should the giveaway be posted in?"
-User: "giveaway"
-You: "How many hours should it last?"
-User: "24"
-You: "How many winners?"
-User: "1"
-You: "Got it! Running the giveaway now..."
-```json
-{"action":"create_giveaway","data":{"channel_name":"giveaway","prize":"Nitro","duration_hours":24,"winners":1,"description":"Win Discord Nitro!"}}
-```
-
-IMPORTANT: Once you have all info, output the JSON immediately. Do NOT ask "are you sure?" or "shall I proceed?". Just do it.
+IMPORTANT: Once you have all info, output the JSON immediately. Do NOT ask for confirmation. Just do it.
 Be short, friendly, and conversational. No long explanations.
 """
 
@@ -109,11 +96,6 @@ def get_history(user_id):
     if user_id not in conversation_history:
         conversation_history[user_id] = []
     return conversation_history[user_id]
-
-def add_to_history(user_id, role, content):
-    get_history(user_id).append({"role": role, "content": content})
-    if len(conversation_history[user_id]) > 30:
-        conversation_history[user_id] = conversation_history[user_id][-30:]
 
 def extract_json_action(text):
     match = re.search(r'```json\s*(\{.*?\})\s*```', text, re.DOTALL)
@@ -135,104 +117,67 @@ def clean_reply(text):
     return cleaned if cleaned else None
 
 def get_server_snapshot(guild):
-    """Build a full live snapshot of the server to inject into Claude."""
-    # Boost info
     boost_level = guild.premium_tier
     boost_count = guild.premium_subscription_count or 0
-
-    # Members
     total_members = guild.member_count
     online = sum(1 for m in guild.members if m.status != discord.Status.offline) if guild.members else "N/A"
     bots = sum(1 for m in guild.members if m.bot)
     humans = total_members - bots
-
-    # Channels
     text_channels = [c.name for c in guild.text_channels]
     voice_channels = [c.name for c in guild.voice_channels]
     categories = [c.name for c in guild.categories]
-
-    # Roles (skip @everyone)
     roles = [r.name for r in guild.roles if r.name != "@everyone"]
-
-    # Owner
     owner = guild.owner.display_name if guild.owner else "Unknown"
-
-    # Created
     created = guild.created_at.strftime("%B %d, %Y")
+    boosts_needed = [2,7,14][boost_level] - boost_count if boost_level < 3 else "Max level reached"
 
-    # Emojis
-    emoji_count = len(guild.emojis)
-
-    # Verification level
-    verification = str(guild.verification_level)
-
-    snapshot = f"""
-=== LIVE SERVER DATA (updated every message) ===
-Server name: {guild.name}
-Owner: {owner}
-Created: {created}
-Server ID: {guild.id}
-
-BOOST INFO:
-- Boost level: {boost_level}
-- Total boosts: {boost_count}
-- Boosts needed for next level: {[2,7,14][boost_level] - boost_count if boost_level < 3 else "Max level reached"}
-
-MEMBERS:
-- Total members: {total_members}
-- Humans: {humans}
-- Bots: {bots}
-- Online (approx): {online}
-
-CHANNELS ({len(text_channels)} text, {len(voice_channels)} voice):
-- Text: {", ".join(text_channels) if text_channels else "none"}
-- Voice: {", ".join(voice_channels) if voice_channels else "none"}
-- Categories: {", ".join(categories) if categories else "none"}
-
-ROLES ({len(roles)} total):
-{", ".join(roles) if roles else "none"}
-
-OTHER:
-- Emojis: {emoji_count}
-- Verification level: {verification}
+    return f"""
+=== LIVE SERVER DATA ===
+Server: {guild.name} | Owner: {owner} | Created: {created}
+Boosts: {boost_count} (Level {boost_level}) | Need {boosts_needed} more for next level
+Members: {total_members} total ({humans} humans, {bots} bots, {online} online)
+Text channels ({len(text_channels)}): {", ".join(text_channels) or "none"}
+Voice channels ({len(voice_channels)}): {", ".join(voice_channels) or "none"}
+Categories: {", ".join(categories) or "none"}
+Roles ({len(roles)}): {", ".join(roles) or "none"}
+Emojis: {len(guild.emojis)} | Verification: {guild.verification_level}
 === END SERVER DATA ===
 """
-    return snapshot
 
-async def ask_claude(user_id, user_message, guild=None):
-    # Inject live server data into the user message if guild is provided
-    if guild:
-        snapshot = get_server_snapshot(guild)
-        full_message = f"{snapshot}\n\nUser message: {user_message}"
-    else:
-        full_message = user_message
+async def ask_gemini(user_id, user_message, guild=None):
+    snapshot = get_server_snapshot(guild) if guild else ""
+    full_message = f"{snapshot}\nUser: {user_message}" if snapshot else user_message
 
-    add_to_history(user_id, "user", full_message)
+    history = get_history(user_id)
+
+    contents = history + [{"role": "user", "parts": [{"text": full_message}]}]
+
+    payload = json.dumps({
+        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": contents,
+        "generationConfig": {"maxOutputTokens": 1000, "temperature": 0.7}
+    }).encode("utf-8")
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+
     try:
-        response = claude.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1000,
-            system=SYSTEM_PROMPT,
-            messages=get_history(user_id)
-        )
-    except anthropic.BadRequestError as e:
-        conversation_history[user_id].pop()
-        if "credit balance is too low" in str(e):
-            raise RuntimeError("❌ The Anthropic API account has insufficient credits. Please add credits at console.anthropic.com → Plans & Billing.")
-        raise RuntimeError(f"❌ Anthropic API error: {e}")
-    except anthropic.AuthenticationError:
-        conversation_history[user_id].pop()
-        raise RuntimeError("❌ Invalid Anthropic API key. Please check your ANTHROPIC_API_KEY secret.")
+        with urllib.request.urlopen(req) as response:
+            result = json.loads(response.read().decode("utf-8"))
+            reply = result["candidates"][0]["content"]["parts"][0]["text"]
+            # Save clean history (without snapshot)
+            get_history(user_id).append({"role": "user", "parts": [{"text": user_message}]})
+            get_history(user_id).append({"role": "model", "parts": [{"text": reply}]})
+            if len(conversation_history[user_id]) > 30:
+                conversation_history[user_id] = conversation_history[user_id][-30:]
+            return reply
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8")
+        print(f"Gemini error: {e.code} - {error_body}")
+        return f"❌ Gemini API error {e.code}. Check your GEMINI_API_KEY in Secrets."
     except Exception as e:
-        conversation_history[user_id].pop()
-        raise RuntimeError(f"❌ Unexpected error contacting Claude: {e}")
-
-    reply = response.content[0].text
-    # Store only the user's original message (not the snapshot) in history
-    # so history stays clean and doesn't balloon in size
-    conversation_history[user_id][-1] = {"role": "user", "content": user_message}
-    add_to_history(user_id, "assistant", reply)
-    return reply
+        print(f"Error: {e}")
+        return f"❌ Something went wrong: {e}"
 
 # ============================================================
 # ACTION EXECUTOR
@@ -250,11 +195,11 @@ async def execute_action(guild, action_obj, channel):
                 if not category:
                     category = await guild.create_category(data["category_name"])
             if ch_type == "voice":
-                ch = await guild.create_voice_channel(data["name"], category=category)
+                await guild.create_voice_channel(data["name"], category=category)
             elif ch_type == "category":
-                ch = await guild.create_category(data["name"])
+                await guild.create_category(data["name"])
             else:
-                ch = await guild.create_text_channel(data["name"], topic=data.get("topic",""), category=category)
+                await guild.create_text_channel(data["name"], topic=data.get("topic",""), category=category)
             await channel.send(f"✅ Channel **#{data['name']}** created!")
 
         elif action == "delete_channel":
@@ -313,7 +258,7 @@ async def execute_action(guild, action_obj, channel):
             ch = discord.utils.get(guild.text_channels, name=data["channel_name"])
             if not ch:
                 ch = await guild.create_text_channel(data["channel_name"])
-            embed = discord.Embed(title="👋 Welcome System Active!", description=f"Welcome message template:\n> {data.get('message','{member} welcome!')}", color=discord.Color.green())
+            embed = discord.Embed(title="👋 Welcome System Active!", description=f"Message template:\n> {data.get('message','{member} welcome!')}", color=discord.Color.green())
             await ch.send(embed=embed)
             await channel.send(f"✅ Welcome system set up in **#{ch.name}**!")
 
@@ -345,7 +290,7 @@ async def execute_action(guild, action_obj, channel):
             if not category:
                 category = await guild.create_category(cat_name)
             support_ch = await guild.create_text_channel("open-ticket", category=category)
-            embed = discord.Embed(title="🎫 Support Tickets", description="React or click below to open a support ticket.\nOur team will assist you shortly!", color=discord.Color.blurple())
+            embed = discord.Embed(title="🎫 Support Tickets", description="React or click below to open a support ticket!", color=discord.Color.blurple())
             await support_ch.send(embed=embed)
             await channel.send(f"✅ Ticket system created under **{cat_name}**!")
 
@@ -403,7 +348,6 @@ async def on_member_join(member):
 async def on_message(message):
     if message.author.bot:
         return
-    # Custom commands
     if hasattr(bot, "custom_commands"):
         for trigger, response in bot.custom_commands.items():
             if message.content.lower().startswith(trigger):
@@ -417,22 +361,13 @@ async def on_message(message):
 @bot.command(name="ai", aliases=["agent", "a"])
 async def ai_agent(ctx, *, user_input: str):
     user_id = ctx.author.id
-
     async with ctx.typing():
-        try:
-            reply = await ask_claude(user_id, user_input, guild=ctx.guild)
-        except RuntimeError as e:
-            await ctx.send(str(e))
-            return
-
+        reply = await ask_gemini(user_id, user_input, guild=ctx.guild)
         action_obj = extract_json_action(reply)
-
         if action_obj:
-            # Show the text part if any (e.g. "Got it! Running now...")
             display = clean_reply(reply)
             if display:
                 await ctx.send(display)
-            # Execute immediately
             await execute_action(ctx.guild, action_obj, ctx.channel)
         else:
             await ctx.send(reply)
@@ -490,10 +425,9 @@ async def show_commands(ctx):
         "`!ai host a giveaway for Nitro`\n"
         "`!ai setup a ticket system`\n"
         "`!ai create a VIP role in gold`\n"
-        "`!ai send announcement in #general`\n"
-        "`!ai set slowmode in #chat`"
+        "`!ai how many boosts do I have?`"
     ), inline=False)
-    embed.set_footer(text="Powered by Claude AI ⚡")
+    embed.set_footer(text="Powered by Gemini AI ⚡")
     await ctx.send(embed=embed)
 
 # ============================================================
