@@ -208,12 +208,25 @@ async def ask_claude(user_id, user_message, guild=None):
         full_message = user_message
 
     add_to_history(user_id, "user", full_message)
-    response = claude.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=1000,
-        system=SYSTEM_PROMPT,
-        messages=get_history(user_id)
-    )
+    try:
+        response = claude.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1000,
+            system=SYSTEM_PROMPT,
+            messages=get_history(user_id)
+        )
+    except anthropic.BadRequestError as e:
+        conversation_history[user_id].pop()
+        if "credit balance is too low" in str(e):
+            raise RuntimeError("❌ The Anthropic API account has insufficient credits. Please add credits at console.anthropic.com → Plans & Billing.")
+        raise RuntimeError(f"❌ Anthropic API error: {e}")
+    except anthropic.AuthenticationError:
+        conversation_history[user_id].pop()
+        raise RuntimeError("❌ Invalid Anthropic API key. Please check your ANTHROPIC_API_KEY secret.")
+    except Exception as e:
+        conversation_history[user_id].pop()
+        raise RuntimeError(f"❌ Unexpected error contacting Claude: {e}")
+
     reply = response.content[0].text
     # Store only the user's original message (not the snapshot) in history
     # so history stays clean and doesn't balloon in size
@@ -406,7 +419,12 @@ async def ai_agent(ctx, *, user_input: str):
     user_id = ctx.author.id
 
     async with ctx.typing():
-        reply = await ask_claude(user_id, user_input, guild=ctx.guild)
+        try:
+            reply = await ask_claude(user_id, user_input, guild=ctx.guild)
+        except RuntimeError as e:
+            await ctx.send(str(e))
+            return
+
         action_obj = extract_json_action(reply)
 
         if action_obj:
