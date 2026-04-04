@@ -38,47 +38,7 @@ conversation_history = {}  # user_id -> list of {role, content} messages
 # ============================================================
 # BUILT-IN AI RESPONSES
 # ============================================================
-RESPONSES = {
-    "greeting": [
-        "Hello! How can I help you manage your server? 😊",
-        "Hey there! What can I do for you today?",
-        "Hi! Ready to help. What do you need?",
-        "Hello! What's up? Type `!commands` to see what I can do.",
-    ],
-    "farewell": [
-        "See you around! 👋",
-        "Goodbye! I'll be here when you need me.",
-        "Later! Feel free to ask anytime.",
-    ],
-    "how_are_you": [
-        "Running great — no API limits to worry about! 😄 What can I do for you?",
-        "All systems go! Ready to help manage your server.",
-        "Doing well! What do you need?",
-    ],
-    "thanks": [
-        "You're welcome! Anything else I can help with?",
-        "Happy to help! 😊",
-        "Anytime! Let me know if you need anything else.",
-        "No problem at all!",
-    ],
-    "compliment": [
-        "Aw, thank you! You're pretty great yourself 😊",
-        "That's so kind! Just doing my job 🤖",
-        "Thanks! I try my best to be helpful!",
-    ],
-    "joke": [
-        "Why do programmers prefer dark mode? Because light attracts bugs! 🐛",
-        "I told a joke about Discord once. It had terrible latency. 😄",
-        "Why was the bot banned? It kept spamming 'Hello World'! 🤖",
-        "What do you call a Discord bot that tells bad jokes? Me, apparently. 😅",
-        "Why did the moderator cross the road? To ban someone on the other side! 🔨",
-    ],
-    "unknown": [
-        "I'm not sure I understood that. Try `!commands` to see what I can do!",
-        "Hmm, didn't catch that. Use `!commands` for a list of things I can help with.",
-        "Not sure what you mean. Try things like `!ai create channel called general` or `!ai how many members`.",
-    ],
-}
+# (Conversational responses removed — all freeform chat handled by Groq AI)
 
 # ============================================================
 # GROQ AI — real language model, free tier (14,400 req/day)
