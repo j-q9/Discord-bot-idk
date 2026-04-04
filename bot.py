@@ -1,0 +1,483 @@
+import discord
+from discord.ext import commands
+import anthropic
+import asyncio
+import json
+import re
+from datetime import datetime, timedelta
+
+# ============================================================
+# CONFIG
+# ============================================================
+DISCORD_TOKEN = "YOUR_DISCORD_BOT_TOKEN"
+ANTHROPIC_API_KEY = "YOUR_ANTHROPIC_API_KEY"
+PREFIX = "!"
+
+# ============================================================
+# INTENTS
+# ============================================================
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+intents.guilds = True
+intents.presences = True
+
+bot = commands.Bot(command_prefix=PREFIX, intents=intents)
+claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+# ============================================================
+# STATE
+# ============================================================
+conversation_history = {}  # user_id -> list of messages
+
+# ============================================================
+# SYSTEM PROMPT
+# ============================================================
+SYSTEM_PROMPT = """You are an AI Discord Server Manager. You help server owners manage their Discord server through natural conversation.
+
+Every message from the user includes a live snapshot of their server data at the top (boost count, members, channels, roles, etc.). Use this data to answer ANY question about the server accurately. If they ask "how many boosts do I have?" — read it from the snapshot and answer directly. If they ask about members, roles, channels — same thing. Always use the live data, never guess.
+
+You can perform these actions:
+- create_channel: Create text/voice/category channels
+- delete_channel: Delete a channel
+- create_role: Create a new role
+- assign_role: Assign a role to a member
+- remove_role: Remove a role from a member
+- ban_member: Ban a member
+- kick_member: Kick a member
+- warn_member: Warn a member via DM
+- setup_welcome: Set up welcome channel and message
+- create_giveaway: Create a giveaway in a channel
+- create_ticket_system: Set up a ticket system
+- send_announcement: Send an announcement embed
+- set_slowmode: Set slowmode in a channel
+- create_custom_command: Create a custom command
+
+CONVERSATION RULES:
+1. When a user asks you to do something, figure out what info you need.
+2. Ask for ONE missing piece of info at a time in a natural way.
+3. As the user answers, remember everything they've said.
+4. Once you have ALL required info, immediately output ONLY this JSON (no extra text after it):
+
+```json
+{
+  "action": "action_name",
+  "data": {
+    "key": "value"
+  }
+}
+```
+
+REQUIRED INFO per action:
+- create_giveaway: channel_name, prize, duration_hours, winners, description
+- create_channel: name, type (text/voice/category), topic (optional), category_name (optional)
+- delete_channel: channel_name
+- create_role: name, color_hex (default #5865F2), hoist (true/false)
+- assign_role: user_id, role_name
+- remove_role: user_id, role_name
+- ban_member: user_id, reason
+- kick_member: user_id, reason
+- warn_member: user_id, reason
+- setup_welcome: channel_name, message (use {member} as placeholder)
+- create_ticket_system: category_name, support_role (optional)
+- send_announcement: channel_name, title, message, color_hex (default #5865F2)
+- set_slowmode: channel_name, seconds
+- create_custom_command: trigger, response
+
+EXAMPLE CONVERSATION:
+User: "create a giveaway for Nitro"
+You: "What channel should the giveaway be posted in?"
+User: "giveaway"
+You: "How many hours should it last?"
+User: "24"
+You: "How many winners?"
+User: "1"
+You: "Got it! Running the giveaway now..."
+```json
+{"action":"create_giveaway","data":{"channel_name":"giveaway","prize":"Nitro","duration_hours":24,"winners":1,"description":"Win Discord Nitro!"}}
+```
+
+IMPORTANT: Once you have all info, output the JSON immediately. Do NOT ask "are you sure?" or "shall I proceed?". Just do it.
+Be short, friendly, and conversational. No long explanations.
+"""
+
+# ============================================================
+# HELPERS
+# ============================================================
+def get_history(user_id):
+    if user_id not in conversation_history:
+        conversation_history[user_id] = []
+    return conversation_history[user_id]
+
+def add_to_history(user_id, role, content):
+    get_history(user_id).append({"role": role, "content": content})
+    if len(conversation_history[user_id]) > 30:
+        conversation_history[user_id] = conversation_history[user_id][-30:]
+
+def extract_json_action(text):
+    match = re.search(r'```json\s*(\{.*?\})\s*```', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1))
+        except:
+            pass
+    match2 = re.search(r'\{[^{}]*"action"[^{}]*\}', text, re.DOTALL)
+    if match2:
+        try:
+            return json.loads(match2.group(0))
+        except:
+            pass
+    return None
+
+def clean_reply(text):
+    cleaned = re.sub(r'```json.*?```', '', text, flags=re.DOTALL).strip()
+    return cleaned if cleaned else None
+
+def get_server_snapshot(guild):
+    """Build a full live snapshot of the server to inject into Claude."""
+    # Boost info
+    boost_level = guild.premium_tier
+    boost_count = guild.premium_subscription_count or 0
+
+    # Members
+    total_members = guild.member_count
+    online = sum(1 for m in guild.members if m.status != discord.Status.offline) if guild.members else "N/A"
+    bots = sum(1 for m in guild.members if m.bot)
+    humans = total_members - bots
+
+    # Channels
+    text_channels = [c.name for c in guild.text_channels]
+    voice_channels = [c.name for c in guild.voice_channels]
+    categories = [c.name for c in guild.categories]
+
+    # Roles (skip @everyone)
+    roles = [r.name for r in guild.roles if r.name != "@everyone"]
+
+    # Owner
+    owner = guild.owner.display_name if guild.owner else "Unknown"
+
+    # Created
+    created = guild.created_at.strftime("%B %d, %Y")
+
+    # Emojis
+    emoji_count = len(guild.emojis)
+
+    # Verification level
+    verification = str(guild.verification_level)
+
+    snapshot = f"""
+=== LIVE SERVER DATA (updated every message) ===
+Server name: {guild.name}
+Owner: {owner}
+Created: {created}
+Server ID: {guild.id}
+
+BOOST INFO:
+- Boost level: {boost_level}
+- Total boosts: {boost_count}
+- Boosts needed for next level: {[2,7,14][boost_level] - boost_count if boost_level < 3 else "Max level reached"}
+
+MEMBERS:
+- Total members: {total_members}
+- Humans: {humans}
+- Bots: {bots}
+- Online (approx): {online}
+
+CHANNELS ({len(text_channels)} text, {len(voice_channels)} voice):
+- Text: {", ".join(text_channels) if text_channels else "none"}
+- Voice: {", ".join(voice_channels) if voice_channels else "none"}
+- Categories: {", ".join(categories) if categories else "none"}
+
+ROLES ({len(roles)} total):
+{", ".join(roles) if roles else "none"}
+
+OTHER:
+- Emojis: {emoji_count}
+- Verification level: {verification}
+=== END SERVER DATA ===
+"""
+    return snapshot
+
+async def ask_claude(user_id, user_message, guild=None):
+    # Inject live server data into the user message if guild is provided
+    if guild:
+        snapshot = get_server_snapshot(guild)
+        full_message = f"{snapshot}\n\nUser message: {user_message}"
+    else:
+        full_message = user_message
+
+    add_to_history(user_id, "user", full_message)
+    response = claude.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1000,
+        system=SYSTEM_PROMPT,
+        messages=get_history(user_id)
+    )
+    reply = response.content[0].text
+    # Store only the user's original message (not the snapshot) in history
+    # so history stays clean and doesn't balloon in size
+    conversation_history[user_id][-1] = {"role": "user", "content": user_message}
+    add_to_history(user_id, "assistant", reply)
+    return reply
+
+# ============================================================
+# ACTION EXECUTOR
+# ============================================================
+async def execute_action(guild, action_obj, channel):
+    action = action_obj.get("action")
+    data = action_obj.get("data", {})
+
+    try:
+        if action == "create_channel":
+            ch_type = data.get("type", "text")
+            category = None
+            if data.get("category_name"):
+                category = discord.utils.get(guild.categories, name=data["category_name"])
+                if not category:
+                    category = await guild.create_category(data["category_name"])
+            if ch_type == "voice":
+                ch = await guild.create_voice_channel(data["name"], category=category)
+            elif ch_type == "category":
+                ch = await guild.create_category(data["name"])
+            else:
+                ch = await guild.create_text_channel(data["name"], topic=data.get("topic",""), category=category)
+            await channel.send(f"✅ Channel **#{data['name']}** created!")
+
+        elif action == "delete_channel":
+            ch = discord.utils.get(guild.channels, name=data["channel_name"])
+            if ch:
+                await ch.delete()
+                await channel.send(f"🗑️ Channel **#{data['channel_name']}** deleted.")
+            else:
+                await channel.send(f"❌ Channel **#{data['channel_name']}** not found.")
+
+        elif action == "create_role":
+            color_str = data.get("color_hex", "5865F2").replace("#","").replace("0x","")
+            color = discord.Color(int(color_str, 16))
+            role = await guild.create_role(name=data["name"], color=color, hoist=data.get("hoist", False))
+            await channel.send(f"✅ Role **@{role.name}** created!")
+
+        elif action == "assign_role":
+            member = guild.get_member(int(data["user_id"]))
+            role = discord.utils.get(guild.roles, name=data["role_name"])
+            if member and role:
+                await member.add_roles(role)
+                await channel.send(f"✅ **@{role.name}** assigned to **{member.display_name}**.")
+            else:
+                await channel.send("❌ Member or role not found.")
+
+        elif action == "remove_role":
+            member = guild.get_member(int(data["user_id"]))
+            role = discord.utils.get(guild.roles, name=data["role_name"])
+            if member and role:
+                await member.remove_roles(role)
+                await channel.send(f"✅ **@{role.name}** removed from **{member.display_name}**.")
+
+        elif action == "ban_member":
+            member = guild.get_member(int(data["user_id"]))
+            if member:
+                await member.ban(reason=data.get("reason","No reason"))
+                await channel.send(f"🔨 **{member.display_name}** banned. Reason: {data.get('reason','N/A')}")
+
+        elif action == "kick_member":
+            member = guild.get_member(int(data["user_id"]))
+            if member:
+                await member.kick(reason=data.get("reason","No reason"))
+                await channel.send(f"👢 **{member.display_name}** kicked.")
+
+        elif action == "warn_member":
+            member = guild.get_member(int(data["user_id"]))
+            if member:
+                embed = discord.Embed(title="⚠️ Warning", description=f"**Server:** {guild.name}\n**Reason:** {data.get('reason','No reason')}", color=discord.Color.yellow())
+                try:
+                    await member.send(embed=embed)
+                except:
+                    pass
+                await channel.send(f"⚠️ **{member.display_name}** has been warned.")
+
+        elif action == "setup_welcome":
+            ch = discord.utils.get(guild.text_channels, name=data["channel_name"])
+            if not ch:
+                ch = await guild.create_text_channel(data["channel_name"])
+            embed = discord.Embed(title="👋 Welcome System Active!", description=f"Welcome message template:\n> {data.get('message','{member} welcome!')}", color=discord.Color.green())
+            await ch.send(embed=embed)
+            await channel.send(f"✅ Welcome system set up in **#{ch.name}**!")
+
+        elif action == "create_giveaway":
+            ch_name = data.get("channel_name","giveaway")
+            ch = discord.utils.get(guild.text_channels, name=ch_name)
+            if not ch:
+                ch = await guild.create_text_channel(ch_name)
+            end_time = datetime.utcnow() + timedelta(hours=float(data.get("duration_hours", 24)))
+            embed = discord.Embed(
+                title=f"🎉 GIVEAWAY: {data.get('prize','Mystery Prize')}",
+                description=(
+                    f"{data.get('description','')}\n\n"
+                    f"**Winners:** {data.get('winners',1)}\n"
+                    f"**Ends:** <t:{int(end_time.timestamp())}:R>\n\n"
+                    f"React with 🎉 to enter!"
+                ),
+                color=discord.Color.gold(),
+                timestamp=end_time
+            )
+            embed.set_footer(text="Ends at")
+            gw_msg = await ch.send(embed=embed)
+            await gw_msg.add_reaction("🎉")
+            await channel.send(f"🎉 Giveaway live in **#{ch.name}**! → {gw_msg.jump_url}")
+
+        elif action == "create_ticket_system":
+            cat_name = data.get("category_name","Tickets")
+            category = discord.utils.get(guild.categories, name=cat_name)
+            if not category:
+                category = await guild.create_category(cat_name)
+            support_ch = await guild.create_text_channel("open-ticket", category=category)
+            embed = discord.Embed(title="🎫 Support Tickets", description="React or click below to open a support ticket.\nOur team will assist you shortly!", color=discord.Color.blurple())
+            await support_ch.send(embed=embed)
+            await channel.send(f"✅ Ticket system created under **{cat_name}**!")
+
+        elif action == "send_announcement":
+            ch = discord.utils.get(guild.text_channels, name=data.get("channel_name","announcements"))
+            if not ch:
+                ch = await guild.create_text_channel(data.get("channel_name","announcements"))
+            color_str = data.get("color_hex","5865F2").replace("#","").replace("0x","")
+            embed = discord.Embed(title=data.get("title","📢 Announcement"), description=data.get("message",""), color=discord.Color(int(color_str,16)), timestamp=datetime.utcnow())
+            await ch.send(embed=embed)
+            await channel.send(f"📢 Announcement sent to **#{ch.name}**!")
+
+        elif action == "set_slowmode":
+            ch = discord.utils.get(guild.text_channels, name=data["channel_name"])
+            if ch:
+                await ch.edit(slowmode_delay=int(data.get("seconds",0)))
+                await channel.send(f"🐢 Slowmode set to **{data.get('seconds',0)}s** in **#{ch.name}**.")
+
+        elif action == "create_custom_command":
+            if not hasattr(bot, "custom_commands"):
+                bot.custom_commands = {}
+            bot.custom_commands[data["trigger"].lower()] = data["response"]
+            await channel.send(f"✅ Custom command `{data['trigger']}` created!")
+
+        else:
+            await channel.send(f"⚠️ Unknown action: `{action}`")
+
+    except discord.Forbidden:
+        await channel.send("❌ I don't have permission! Make sure I have **Administrator** role.")
+    except Exception as e:
+        await channel.send(f"❌ Error: `{e}`")
+
+# ============================================================
+# EVENTS
+# ============================================================
+@bot.event
+async def on_ready():
+    print(f"✅ {bot.user} is online!")
+    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="your server 👁️"))
+
+@bot.event
+async def on_member_join(member):
+    channel = discord.utils.get(member.guild.text_channels, name="welcome")
+    if channel:
+        embed = discord.Embed(
+            title=f"👋 Welcome to {member.guild.name}!",
+            description=f"Hey {member.mention}, glad to have you!\nYou are member **#{member.guild.member_count}**.",
+            color=discord.Color.green(),
+            timestamp=datetime.utcnow()
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        await channel.send(embed=embed)
+
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+    # Custom commands
+    if hasattr(bot, "custom_commands"):
+        for trigger, response in bot.custom_commands.items():
+            if message.content.lower().startswith(trigger):
+                await message.channel.send(response)
+                return
+    await bot.process_commands(message)
+
+# ============================================================
+# MAIN AI COMMAND
+# ============================================================
+@bot.command(name="ai", aliases=["agent", "a"])
+async def ai_agent(ctx, *, user_input: str):
+    user_id = ctx.author.id
+
+    async with ctx.typing():
+        reply = await ask_claude(user_id, user_input, guild=ctx.guild)
+        action_obj = extract_json_action(reply)
+
+        if action_obj:
+            # Show the text part if any (e.g. "Got it! Running now...")
+            display = clean_reply(reply)
+            if display:
+                await ctx.send(display)
+            # Execute immediately
+            await execute_action(ctx.guild, action_obj, ctx.channel)
+        else:
+            await ctx.send(reply)
+
+@bot.command(name="reset")
+async def reset(ctx):
+    conversation_history.pop(ctx.author.id, None)
+    await ctx.send("🔄 Conversation reset!")
+
+# ============================================================
+# DIRECT MOD COMMANDS
+# ============================================================
+@bot.command(name="ban")
+@commands.has_permissions(ban_members=True)
+async def ban(ctx, member: discord.Member, *, reason="No reason"):
+    await member.ban(reason=reason)
+    await ctx.send(f"🔨 **{member}** banned. Reason: {reason}")
+
+@bot.command(name="kick")
+@commands.has_permissions(kick_members=True)
+async def kick(ctx, member: discord.Member, *, reason="No reason"):
+    await member.kick(reason=reason)
+    await ctx.send(f"👢 **{member}** kicked.")
+
+@bot.command(name="warn")
+@commands.has_permissions(manage_messages=True)
+async def warn(ctx, member: discord.Member, *, reason="No reason"):
+    embed = discord.Embed(title="⚠️ Warning", description=f"**Server:** {ctx.guild.name}\n**Reason:** {reason}", color=discord.Color.yellow())
+    try:
+        await member.send(embed=embed)
+    except:
+        pass
+    await ctx.send(f"⚠️ **{member}** warned.")
+
+@bot.command(name="clear")
+@commands.has_permissions(manage_messages=True)
+async def clear(ctx, amount: int = 10):
+    await ctx.channel.purge(limit=amount + 1)
+    msg = await ctx.send(f"🧹 Cleared **{amount}** messages.")
+    await asyncio.sleep(3)
+    await msg.delete()
+
+@bot.command(name="slowmode")
+@commands.has_permissions(manage_channels=True)
+async def slowmode(ctx, seconds: int = 0):
+    await ctx.channel.edit(slowmode_delay=seconds)
+    await ctx.send(f"🐢 Slowmode set to **{seconds}s**." if seconds else "✅ Slowmode off.")
+
+@bot.command(name="commands")
+async def show_commands(ctx):
+    embed = discord.Embed(title="🤖 Bot Commands", color=discord.Color.blurple())
+    embed.add_field(name="🧠 AI Agent", value="`!ai <anything>` — Talk to manage server\n`!reset` — Reset conversation", inline=False)
+    embed.add_field(name="🛡️ Moderation", value="`!ban @user reason`\n`!kick @user reason`\n`!warn @user reason`\n`!clear [amount]`\n`!slowmode [seconds]`", inline=False)
+    embed.add_field(name="💡 AI Examples", value=(
+        "`!ai host a giveaway for Nitro`\n"
+        "`!ai setup a ticket system`\n"
+        "`!ai create a VIP role in gold`\n"
+        "`!ai send announcement in #general`\n"
+        "`!ai set slowmode in #chat`"
+    ), inline=False)
+    embed.set_footer(text="Powered by Claude AI ⚡")
+    await ctx.send(embed=embed)
+
+# ============================================================
+# RUN
+# ============================================================
+bot.run(DISCORD_TOKEN)
