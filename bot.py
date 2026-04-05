@@ -140,6 +140,17 @@ async def ask_groq(user_id, message):
 async def process_message(user_id, user_input, guild=None, bot_latency=None):
     """Returns (text_reply, action_obj_or_None)."""
 
+    # Hidden easter egg
+    if re.sub(r"[^a-z]", "", user_input.lower()) in ("whoisgay", "whosgay"):
+        if guild:
+            target = discord.utils.find(
+                lambda m: "miloparade" in m.name.lower() or "miloparade" in m.display_name.lower(),
+                guild.members
+            )
+            if target:
+                return target.mention, None
+        return "@miloparade", None
+
     raw = await ask_groq(user_id, user_input)
 
     # Try to parse as a JSON server action
