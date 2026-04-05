@@ -65,7 +65,7 @@ auto_role_config     = {}
 welcome_config       = {}
 farewell_config      = {}
 warn_records         = {}
-roll_winning_number  = random.randint(ROLL_MIN, ROLL_MAX)
+ROLL_WIN_CHANCE      = 0.10  # 10% chance per valid roll
 
 # ============================================================
 # QUIZ BANK
@@ -224,7 +224,7 @@ async def ask_groq(user_id, message):
 # ============================================================
 @bot.event
 async def on_ready():
-    print(f"✅ {bot.user} is online! Roll winning number: {roll_winning_number}")
+    print(f"✅ {bot.user} is online! Roll win chance: {int(ROLL_WIN_CHANCE*100)}%")
     await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="your server 👁️"))
 
 @bot.event
@@ -260,7 +260,6 @@ async def on_member_remove(member):
 
 @bot.event
 async def on_message(message):
-    global roll_winning_number
     if message.author.bot:
         return
 
@@ -280,11 +279,12 @@ async def on_message(message):
         if re.match(r"^\d+$", content):
             number = int(content)
             if ROLL_MIN <= number <= ROLL_MAX:
-                if number == roll_winning_number:
+                won = random.random() < ROLL_WIN_CHANCE
+                if won:
                     embed = discord.Embed(
                         title="🎉 WINNER!",
                         description=(
-                            f"{message.author.mention} guessed the correct number — **{number}**!\n\n"
+                            f"{message.author.mention} rolled the correct number — **{number}**!\n\n"
                             "**Create a ticket to claim your Robux!**\n"
                             "Go to the ticket channel and open a support ticket to receive your reward."
                         ),
@@ -292,11 +292,9 @@ async def on_message(message):
                     )
                     embed.set_footer(text="Congratulations! 🏆")
                     await message.channel.send(embed=embed)
-                    roll_winning_number = random.randint(ROLL_MIN, ROLL_MAX)
-                    print(f"New winning number: {roll_winning_number}")
                 else:
                     await message.reply(
-                        f"❌ **{number}** is not the winning number. Keep trying! ({ROLL_MIN}–{ROLL_MAX})"
+                        f"❌ **{number}** isn't the correct number. Keep trying! ({ROLL_MIN}–{ROLL_MAX})"
                     )
                 return
 
@@ -587,14 +585,13 @@ async def role_cmd(ctx, action: str, *, args: str = ""):
     else:
         await ctx.send("❌ Usage: `!role create/delete/color/give/remove`")
 
-@bot.command(name="newroll")
-async def newroll_cmd(ctx):
-    global roll_winning_number
+@bot.command(name="rollinfo")
+async def rollinfo_cmd(ctx):
     if not has_admin_role(ctx.author):
         return await ctx.send("❌ You need **Owner** or **Management** role.")
-    roll_winning_number = random.randint(ROLL_MIN, ROLL_MAX)
-    await ctx.send(f"🎲 New winning number set! Let the guessing begin ({ROLL_MIN}–{ROLL_MAX}).")
-    print(f"New winning number: {roll_winning_number}")
+    await ctx.send(
+        f"🎲 Roll system: **{int(ROLL_WIN_CHANCE * 100)}% win chance** per valid guess | Range: {ROLL_MIN}–{ROLL_MAX}"
+    )
 
 # ============================================================
 # RUN
