@@ -280,7 +280,7 @@ async def on_message(message):
         if re.match(r"^\d+$", content):
             number = int(content)
             if ROLL_MIN <= number <= ROLL_MAX:
-                if number == roll_winning_number:
+                if random.random() < 0.10:
                     embed = discord.Embed(
                         title="🎉 WINNER!",
                         description=(
@@ -292,8 +292,6 @@ async def on_message(message):
                     )
                     embed.set_footer(text="Congratulations! 🏆")
                     await message.channel.send(embed=embed)
-                    roll_winning_number = random.randint(ROLL_MIN, ROLL_MAX)
-                    print(f"New winning number: {roll_winning_number}")
                 else:
                     await message.reply(
                         f"❌ **{number}** isn't the correct number. Keep trying! ({ROLL_MIN}–{ROLL_MAX})"
