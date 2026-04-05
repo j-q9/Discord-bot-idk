@@ -655,9 +655,6 @@ async def ai_cmd(ctx, *, user_input: str):
             reply      = await ask_groq_admin(user_id, user_input, ctx.guild)
             action_obj = extract_json_action(reply)
             if action_obj:
-                display = clean_ai_reply(reply)
-                if display:
-                    await ctx.reply(display)
                 await execute_action(ctx.guild, action_obj, ctx.channel)
             else:
                 await ctx.reply(reply)
