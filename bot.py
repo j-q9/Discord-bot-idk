@@ -192,6 +192,210 @@ def is_roll_channel(channel):
 GROQ_SYSTEM_PROMPT = """You are a friendly Discord bot assistant. Chat about ANYTHING — answer questions, tell jokes, give opinions, help with homework, discuss games, etc.
 Be short (1-3 sentences), casual, friendly, with occasional emojis. You are a chat companion."""
 
+GROQ_ADMIN_PROMPT = """You are an AI Discord Server Manager for admins only.
+A live snapshot of the server is included at the top of every message — use it to answer questions about the server accurately.
+
+You can perform these server management actions:
+- create_channel: Create text/voice/category channels
+- delete_channel: Delete a channel
+- create_role: Create a new role with a color
+- assign_role: Assign a role to a member
+- remove_role: Remove a role from a member
+- ban_member: Ban a member
+- kick_member: Kick a member
+- warn_member: Warn a member via DM
+- setup_welcome: Set up welcome channel and message
+- create_giveaway: Create a giveaway in a channel
+- send_announcement: Send an announcement embed
+- set_slowmode: Set slowmode in a channel
+
+When the admin asks you to perform an action, ask ONE question at a time if info is missing.
+Once you have ALL required info, output ONLY this JSON (no extra text):
+```json
+{"action": "action_name", "data": {"key": "value"}}
+```
+
+Required fields per action:
+- create_channel: name, type (text/voice/category), topic (optional)
+- delete_channel: channel_name
+- create_role: name, color_hex (default #5865F2), hoist (true/false)
+- assign_role: user_id, role_name
+- remove_role: user_id, role_name
+- ban_member: user_id, reason
+- kick_member: user_id, reason
+- warn_member: user_id, reason
+- setup_welcome: channel_name, message (use {member} as placeholder)
+- create_giveaway: channel_name, prize, duration_hours, winners
+- send_announcement: channel_name, title, message, color_hex (default #5865F2)
+- set_slowmode: channel_name, seconds
+
+For plain questions or chat, just reply normally (no JSON).
+Be short, friendly, and conversational."""
+
+def get_server_snapshot(guild):
+    boost_level = guild.premium_tier
+    boost_count = guild.premium_subscription_count or 0
+    text_channels = [c.name for c in guild.text_channels]
+    voice_channels = [c.name for c in guild.voice_channels]
+    roles = [r.name for r in guild.roles if r.name != "@everyone"]
+    return (
+        f"=== LIVE SERVER DATA ===\n"
+        f"Server: {guild.name} | Boosts: {boost_count} (Level {boost_level}) | Members: {guild.member_count}\n"
+        f"Text channels: {', '.join(text_channels) or 'none'}\n"
+        f"Voice channels: {', '.join(voice_channels) or 'none'}\n"
+        f"Roles: {', '.join(roles) or 'none'}\n"
+        f"=== END SERVER DATA ==="
+    )
+
+def extract_json_action(text):
+    match = re.search(r'```json\s*(\{.*?\})\s*```', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1))
+        except Exception:
+            pass
+    match2 = re.search(r'\{[^{}]*"action"[^{}]*\}', text, re.DOTALL)
+    if match2:
+        try:
+            return json.loads(match2.group(0))
+        except Exception:
+            pass
+    return None
+
+def clean_ai_reply(text):
+    cleaned = re.sub(r'```json.*?```', '', text, flags=re.DOTALL).strip()
+    return cleaned if cleaned else None
+
+async def execute_action(guild, action_obj, channel):
+    action = action_obj.get("action")
+    data   = action_obj.get("data", {})
+    try:
+        if action == "create_channel":
+            ch_type = data.get("type", "text")
+            if ch_type == "voice":
+                await guild.create_voice_channel(data["name"])
+            elif ch_type == "category":
+                await guild.create_category(data["name"])
+            else:
+                await guild.create_text_channel(data["name"], topic=data.get("topic", ""))
+            await channel.send(f"✅ Channel **#{data['name']}** created!")
+
+        elif action == "delete_channel":
+            ch = discord.utils.get(guild.channels, name=data["channel_name"])
+            if ch:
+                await ch.delete()
+                await channel.send(f"🗑️ Channel **#{data['channel_name']}** deleted.")
+            else:
+                await channel.send(f"❌ Channel **#{data['channel_name']}** not found.")
+
+        elif action == "create_role":
+            color_str = data.get("color_hex", "5865F2").replace("#", "").replace("0x", "")
+            color = discord.Color(int(color_str, 16))
+            role = await guild.create_role(name=data["name"], color=color, hoist=data.get("hoist", False))
+            await channel.send(f"✅ Role **@{role.name}** created!")
+
+        elif action == "assign_role":
+            member = guild.get_member(int(data["user_id"]))
+            role   = discord.utils.get(guild.roles, name=data["role_name"])
+            if member and role:
+                await member.add_roles(role)
+                await channel.send(f"✅ **@{role.name}** assigned to **{member.display_name}**.")
+            else:
+                await channel.send("❌ Member or role not found.")
+
+        elif action == "remove_role":
+            member = guild.get_member(int(data["user_id"]))
+            role   = discord.utils.get(guild.roles, name=data["role_name"])
+            if member and role:
+                await member.remove_roles(role)
+                await channel.send(f"✅ **@{role.name}** removed from **{member.display_name}**.")
+
+        elif action == "ban_member":
+            member = guild.get_member(int(data["user_id"]))
+            if member:
+                await member.ban(reason=data.get("reason", "No reason"))
+                await channel.send(f"🔨 **{member.display_name}** banned. Reason: {data.get('reason', 'N/A')}")
+
+        elif action == "kick_member":
+            member = guild.get_member(int(data["user_id"]))
+            if member:
+                await member.kick(reason=data.get("reason", "No reason"))
+                await channel.send(f"👢 **{member.display_name}** kicked.")
+
+        elif action == "warn_member":
+            member = guild.get_member(int(data["user_id"]))
+            if member:
+                embed = discord.Embed(
+                    title="⚠️ Warning",
+                    description=f"**Server:** {guild.name}\n**Reason:** {data.get('reason', 'No reason')}",
+                    color=discord.Color.yellow()
+                )
+                try:
+                    await member.send(embed=embed)
+                except Exception:
+                    pass
+                await channel.send(f"⚠️ **{member.display_name}** has been warned.")
+
+        elif action == "setup_welcome":
+            ch = discord.utils.get(guild.text_channels, name=data["channel_name"])
+            if not ch:
+                ch = await guild.create_text_channel(data["channel_name"])
+            embed = discord.Embed(
+                title="👋 Welcome System Active!",
+                description=f"Message template:\n> {data.get('message', '{member} welcome!')}",
+                color=discord.Color.green()
+            )
+            await ch.send(embed=embed)
+            await channel.send(f"✅ Welcome system set up in **#{ch.name}**!")
+
+        elif action == "create_giveaway":
+            ch_name = data.get("channel_name", "giveaway")
+            ch = discord.utils.get(guild.text_channels, name=ch_name)
+            if not ch:
+                ch = await guild.create_text_channel(ch_name)
+            from datetime import timedelta
+            end_time = datetime.now(timezone.utc) + timedelta(hours=float(data.get("duration_hours", 24)))
+            embed = discord.Embed(
+                title=f"🎉 GIVEAWAY: {data.get('prize', 'Mystery Prize')}",
+                description=(
+                    f"**Winners:** {data.get('winners', 1)}\n"
+                    f"**Ends:** <t:{int(end_time.timestamp())}:R>\n\n"
+                    f"React with 🎉 to enter!"
+                ),
+                color=discord.Color.gold()
+            )
+            embed.set_footer(text="Ends at")
+            gw_msg = await ch.send(embed=embed)
+            await gw_msg.add_reaction("🎉")
+            await channel.send(f"🎉 Giveaway live in **#{ch.name}**! → {gw_msg.jump_url}")
+
+        elif action == "send_announcement":
+            ch = discord.utils.get(guild.text_channels, name=data.get("channel_name", "announcements"))
+            if not ch:
+                ch = await guild.create_text_channel(data.get("channel_name", "announcements"))
+            color_str = data.get("color_hex", "5865F2").replace("#", "").replace("0x", "")
+            embed = discord.Embed(
+                title=data.get("title", "📢 Announcement"),
+                description=data.get("message", ""),
+                color=discord.Color(int(color_str, 16))
+            )
+            await ch.send(embed=embed)
+            await channel.send(f"📢 Announcement sent to **#{ch.name}**!")
+
+        elif action == "set_slowmode":
+            ch = discord.utils.get(guild.text_channels, name=data["channel_name"])
+            if ch:
+                await ch.edit(slowmode_delay=int(data.get("seconds", 0)))
+                await channel.send(f"🐢 Slowmode set to **{data.get('seconds', 0)}s** in **#{ch.name}**.")
+
+        else:
+            await channel.send(f"⚠️ Unknown action: `{action}`")
+
+    except discord.Forbidden:
+        await channel.send("❌ I don't have permission to do that!")
+    except Exception as e:
+        await channel.send(f"❌ Error: `{e}`")
+
 async def ask_groq(user_id, message):
     if not GROQ_API_KEY:
         return "⚠️ No GROQ_API_KEY set in Secrets!"
@@ -221,6 +425,39 @@ async def ask_groq(user_id, message):
         return "⏳ AI is taking too long — try again!"
     except Exception as ex:
         print(f"Groq error: {ex}")
+        return "❌ Couldn't reach AI right now."
+
+async def ask_groq_admin(user_id, message, guild):
+    if not GROQ_API_KEY:
+        return "⚠️ No GROQ_API_KEY set in Secrets!"
+    snapshot = get_server_snapshot(guild)
+    full_msg  = f"{snapshot}\n\nAdmin request: {message}"
+    history   = conversation_history.get(user_id, [])
+    messages  = [{"role": "system", "content": GROQ_ADMIN_PROMPT}]
+    messages += history[-10:]
+    messages.append({"role": "user", "content": full_msg})
+    payload = {"model": "llama-3.1-8b-instant", "messages": messages, "max_tokens": 500, "temperature": 0.5}
+    headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=25)) as resp:
+                if resp.status == 429:
+                    return "⏳ Rate-limited — try again in a moment!"
+                if resp.status in (401, 403):
+                    return "❌ Invalid GROQ_API_KEY."
+                if resp.status != 200:
+                    return f"❌ Groq error ({resp.status}). Try again."
+                result = await resp.json()
+                reply  = result["choices"][0]["message"]["content"].strip()
+        h = conversation_history.setdefault(user_id, [])
+        h.append({"role": "user", "content": message})
+        h.append({"role": "assistant", "content": reply})
+        conversation_history[user_id] = h[-20:]
+        return reply
+    except asyncio.TimeoutError:
+        return "⏳ AI is taking too long — try again!"
+    except Exception as ex:
+        print(f"Groq admin error: {ex}")
         return "❌ Couldn't reach AI right now."
 
 # ============================================================
@@ -414,8 +651,19 @@ async def ai_cmd(ctx, *, user_input: str):
     user_last_called[user_id] = now
 
     async with ctx.typing():
-        reply = await ask_groq(user_id, user_input)
-        await ctx.reply(reply)
+        if has_admin_role(ctx.author):
+            reply      = await ask_groq_admin(user_id, user_input, ctx.guild)
+            action_obj = extract_json_action(reply)
+            if action_obj:
+                display = clean_ai_reply(reply)
+                if display:
+                    await ctx.reply(display)
+                await execute_action(ctx.guild, action_obj, ctx.channel)
+            else:
+                await ctx.reply(reply)
+        else:
+            reply = await ask_groq(user_id, user_input)
+            await ctx.reply(reply)
 
 # ============================================================
 # MEMBER COMMANDS
