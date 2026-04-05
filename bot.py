@@ -69,6 +69,7 @@ Available actions:
 - send_announcement     {"channel_name": "announcements", "title": "...", "message": "...", "color_hex": "#5865F2"}
 - set_slowmode          {"channel_name": "...", "seconds": 5}
 - create_giveaway       {"channel_name": "giveaway", "prize": "...", "duration_hours": 24, "winners": 1}
+- purge_user_messages   {"user_id": "ID", "filter": "all|images|links|text", "limit": 100}
 - query_members         {}
 - query_channels        {}
 - query_roles           {}
@@ -428,6 +429,39 @@ async def execute_action(guild, action_obj, channel):
             await ch.edit(slowmode_delay=secs)
             await channel.send(f"🐢 Slowmode set to **{secs}s** in **#{ch.name}**.")
 
+        elif action == "purge_user_messages":
+            member = guild.get_member(int(data["user_id"]))
+            if not member:
+                return await channel.send("❌ Member not found in this server.")
+            filter_type = data.get("filter", "all").lower()
+            limit       = min(int(data.get("limit", 100)), 500)
+
+            def check(m):
+                if m.author.id != member.id:
+                    return False
+                if filter_type == "images":
+                    return bool(m.attachments) or any(
+                        ext in m.content.lower()
+                        for ext in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".mp4", ".mov"]
+                    )
+                if filter_type == "links":
+                    return bool(re.search(r"https?://", m.content))
+                if filter_type == "text":
+                    return not m.attachments and not re.search(r"https?://", m.content)
+                return True  # "all"
+
+            deleted = await channel.purge(limit=limit, check=check)
+            label = {
+                "images": "image/video",
+                "links":  "link",
+                "text":   "text-only",
+                "all":    "",
+            }.get(filter_type, "")
+            await channel.send(
+                f"🗑️ Deleted **{len(deleted)}** {label+' ' if label else ''}message(s) from **{member.display_name}**.",
+                delete_after=10
+            )
+
         elif action == "create_giveaway":
             ch_name = data.get("channel_name", "giveaways")
             ch = discord.utils.get(guild.text_channels, name=ch_name)
@@ -638,6 +672,12 @@ async def show_commands(ctx):
     embed.add_field(name="👋 Welcome & Farewell", value=(
         "`!ai set up welcome messages in #welcome`\n"
         "`!ai set up farewell message in #general`"
+    ), inline=False)
+    embed.add_field(name="🗑️ Message Purge", value=(
+        "`!ai delete all messages from @user`\n"
+        "`!ai remove @user image only`\n"
+        "`!ai purge @user links`\n"
+        "`!ai clear @user text messages`"
     ), inline=False)
     embed.add_field(name="🚫 Word Filter", value=(
         "`!ai filter the words: bad, word2`\n"
