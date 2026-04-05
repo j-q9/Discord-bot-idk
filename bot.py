@@ -1,6 +1,7 @@
+import os
 import discord
 from discord.ext import commands
-import anthropic
+from groq import Groq
 import asyncio
 import json
 import re
@@ -9,8 +10,8 @@ from datetime import datetime, timedelta
 # ============================================================
 # CONFIG
 # ============================================================
-DISCORD_TOKEN = "YOUR_DISCORD_BOT_TOKEN"
-ANTHROPIC_API_KEY = "YOUR_ANTHROPIC_API_KEY"
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 PREFIX = "!"
 
 # ============================================================
@@ -23,7 +24,7 @@ intents.guilds = True
 intents.presences = True
 
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
-claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+groq_client = Groq(api_key=GROQ_API_KEY)
 
 # ============================================================
 # STATE
@@ -207,13 +208,12 @@ async def ask_claude(user_id, user_message, guild=None):
         full_message = user_message
 
     add_to_history(user_id, "user", full_message)
-    response = claude.messages.create(
-        model="claude-sonnet-4-20250514",
+    response = groq_client.chat.completions.create(
+        model="llama3-70b-8192",
         max_tokens=1000,
-        system=SYSTEM_PROMPT,
-        messages=get_history(user_id)
+        messages=[{"role": "system", "content": SYSTEM_PROMPT}] + get_history(user_id)
     )
-    reply = response.content[0].text
+    reply = response.choices[0].message.content
     # Store only the user's original message (not the snapshot) in history
     # so history stays clean and doesn't balloon in size
     conversation_history[user_id][-1] = {"role": "user", "content": user_message}
