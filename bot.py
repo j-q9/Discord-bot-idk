@@ -280,11 +280,19 @@ async def on_message(message):
         if re.match(r"^\d+$", content):
             number = int(content)
             if ROLL_MIN <= number <= ROLL_MAX:
-                if random.random() < 0.05:
+                won = random.random() < 0.05
+                if won:
+                    bot_roll = number  # bot's roll "matches"
+                else:
+                    # pick any number that isn't the user's
+                    choices = [n for n in range(ROLL_MIN, ROLL_MAX + 1) if n != number]
+                    bot_roll = random.choice(choices)
+
+                if won:
                     embed = discord.Embed(
                         title="🎉 WINNER!",
                         description=(
-                            f"{message.author.mention} guessed the correct number — **{number}**!\n\n"
+                            f"{message.author.mention} picked **{number}** — bot rolled **{bot_roll}** 🎯\n\n"
                             "**Create a ticket to claim your Robux!**\n"
                             "Go to the ticket channel and open a support ticket to receive your reward."
                         ),
@@ -294,7 +302,7 @@ async def on_message(message):
                     await message.channel.send(embed=embed)
                 else:
                     await message.reply(
-                        f"❌ **{number}** isn't the correct number. Keep trying! ({ROLL_MIN}–{ROLL_MAX})"
+                        f"🎲 You picked **{number}** — bot rolled **{bot_roll}**. ❌ No match! Keep trying! ({ROLL_MIN}–{ROLL_MAX})"
                     )
                 return
 
