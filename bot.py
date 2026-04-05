@@ -622,7 +622,7 @@ async def ai_cmd(ctx, *, user_input: str):
                 "`!role give @user [name]`\n"
                 "`!role remove @user [name]`"
             ), inline=False)
-            embed.add_field(name="🎲 Roll Admin", value="`!newroll` — Reset winning number", inline=False)
+
             embed.add_field(name="🤖 AI Actions (Admin only)", value=(
                 "`!ai ban @user for spamming`\n"
                 "`!ai kick @user`\n"
@@ -723,7 +723,16 @@ async def mute_cmd(ctx, member: discord.Member, minutes: int = 10, *, reason: st
         return await ctx.send("❌ You need **Owner** or **Management** role.")
     until = datetime.now(timezone.utc) + timedelta(minutes=minutes)
     await member.timeout(until, reason=reason)
-    await ctx.send(f"🔇 **{member.display_name}** muted for **{minutes} min**. Reason: {reason}")
+    try:
+        dm_embed = discord.Embed(
+            title="🔇 You have been muted",
+            description=f"**Server:** {ctx.guild.name}\n**Duration:** {minutes} minutes\n**Reason:** {reason}",
+            color=discord.Color.orange()
+        )
+        await member.send(embed=dm_embed)
+    except Exception:
+        pass
+    await ctx.send(f"🔇 {member.mention} has been muted for **{minutes} min**. Reason: {reason}")
 
 @bot.command(name="unmute")
 async def unmute_cmd(ctx, member: discord.Member):
@@ -736,8 +745,17 @@ async def unmute_cmd(ctx, member: discord.Member):
 async def ban_cmd(ctx, member: discord.Member, *, reason: str = "No reason"):
     if not has_admin_role(ctx.author):
         return await ctx.send("❌ You need **Owner** or **Management** role.")
+    try:
+        dm_embed = discord.Embed(
+            title="🔨 You have been banned",
+            description=f"**Server:** {ctx.guild.name}\n**Reason:** {reason}",
+            color=discord.Color.red()
+        )
+        await member.send(embed=dm_embed)
+    except Exception:
+        pass
     await member.ban(reason=reason)
-    await ctx.send(f"🔨 **{member.display_name}** banned. Reason: {reason}")
+    await ctx.send(f"🔨 {member.mention} has been banned. Reason: {reason}")
 
 @bot.command(name="unban")
 async def unban_cmd(ctx, *, username: str):
@@ -754,8 +772,17 @@ async def unban_cmd(ctx, *, username: str):
 async def kick_cmd(ctx, member: discord.Member, *, reason: str = "No reason"):
     if not has_admin_role(ctx.author):
         return await ctx.send("❌ You need **Owner** or **Management** role.")
+    try:
+        dm_embed = discord.Embed(
+            title="👢 You have been kicked",
+            description=f"**Server:** {ctx.guild.name}\n**Reason:** {reason}",
+            color=discord.Color.orange()
+        )
+        await member.send(embed=dm_embed)
+    except Exception:
+        pass
     await member.kick(reason=reason)
-    await ctx.send(f"👢 **{member.display_name}** kicked. Reason: {reason}")
+    await ctx.send(f"👢 {member.mention} has been kicked. Reason: {reason}")
 
 @bot.command(name="warn")
 async def warn_cmd(ctx, member: discord.Member, *, reason: str = "No reason"):
@@ -763,12 +790,16 @@ async def warn_cmd(ctx, member: discord.Member, *, reason: str = "No reason"):
         return await ctx.send("❌ You need **Owner** or **Management** role.")
     warn_records.setdefault(ctx.guild.id, {}).setdefault(str(member.id), []).append(reason)
     count = len(warn_records[ctx.guild.id][str(member.id)])
-    embed = discord.Embed(title="⚠️ Warning", description=f"**Server:** {ctx.guild.name}\n**Reason:** {reason}\n**Total warnings:** {count}", color=discord.Color.yellow())
+    dm_embed = discord.Embed(
+        title="⚠️ You have been warned",
+        description=f"**Server:** {ctx.guild.name}\n**Reason:** {reason}\n**Total warnings:** {count}",
+        color=discord.Color.yellow()
+    )
     try:
-        await member.send(embed=embed)
+        await member.send(embed=dm_embed)
     except Exception:
         pass
-    await ctx.send(f"⚠️ **{member.display_name}** warned ({count} total). Reason: {reason}")
+    await ctx.send(f"⚠️ {member.mention} has been warned ({count} total). Reason: {reason}")
 
 @bot.command(name="warnings")
 async def warnings_cmd(ctx, member: discord.Member):
@@ -853,14 +884,6 @@ async def role_cmd(ctx, action: str, *, args: str = ""):
     else:
         await ctx.send("❌ Usage: `!role create/delete/color/give/remove`")
 
-@bot.command(name="newroll")
-async def newroll_cmd(ctx):
-    global roll_winning_number
-    if not has_admin_role(ctx.author):
-        return await ctx.send("❌ You need **Owner** or **Management** role.")
-    roll_winning_number = random.randint(ROLL_MIN, ROLL_MAX)
-    await ctx.send(f"🎲 New winning number set! Let the guessing begin ({ROLL_MIN}–{ROLL_MAX}).")
-    print(f"New winning number: {roll_winning_number}")
 
 # ============================================================
 # RUN
