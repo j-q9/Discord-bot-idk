@@ -888,4 +888,5 @@ async def role_cmd(ctx, action: str, *, args: str = ""):
 # ============================================================
 # RUN
 # ============================================================
-bot.run(DISCORD_TOKEN)
+import os
+bot.run(os.getenv('DISCORD_TOKEN'))
