@@ -5,8 +5,7 @@ import json
 import re
 import os
 from datetime import datetime, timedelta, timezone
-import urllib.request
-import urllib.error
+import aiohttp
 
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -80,28 +79,6 @@ User mentions look like <@123456789012345678>. Extract only the digits as user_i
 For EVERYTHING ELSE (chat, questions, jokes, opinions, general talk) — respond naturally, short (1-3 sentences), casual and friendly tone, occasional emojis."""
 
 
-def _call_groq_sync(messages_payload):
-    payload = json.dumps({
-        "model": "llama-3.1-8b-instant",
-        "messages": messages_payload,
-        "max_tokens": 300,
-        "temperature": 0.7,
-    }).encode("utf-8")
-
-    req = urllib.request.Request(
-        "https://api.groq.com/openai/v1/chat/completions",
-        data=payload,
-        headers={
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        result = json.loads(resp.read().decode("utf-8"))
-        return result["choices"][0]["message"]["content"].strip()
-
-
 async def ask_groq(user_id, message):
     if not GROQ_API_KEY:
         return "⚠️ No GROQ_API_KEY set — add it in Secrets!"
@@ -111,24 +88,48 @@ async def ask_groq(user_id, message):
     messages += history[-10:]
     messages.append({"role": "user", "content": message})
 
+    payload = {
+        "model":       "llama-3.1-8b-instant",
+        "messages":    messages,
+        "max_tokens":  300,
+        "temperature": 0.7,
+    }
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type":  "application/json",
+        "Accept":        "application/json",
+    }
+
     try:
-        reply = await asyncio.to_thread(_call_groq_sync, messages)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                json=payload,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=25),
+            ) as resp:
+                if resp.status == 429:
+                    return "⏳ Rate-limited — try again in a moment!"
+                if resp.status in (401, 403):
+                    body = await resp.text()
+                    print(f"Groq auth error {resp.status}: {body}")
+                    return "❌ Invalid GROQ_API_KEY. Check your Secrets."
+                if resp.status != 200:
+                    body = await resp.text()
+                    print(f"Groq HTTP {resp.status}: {body}")
+                    return f"❌ Groq error ({resp.status}). Try again."
+
+                result = await resp.json()
+                reply  = result["choices"][0]["message"]["content"].strip()
 
         h = conversation_history.setdefault(user_id, [])
         h.append({"role": "user",      "content": message})
         h.append({"role": "assistant", "content": reply})
         conversation_history[user_id] = h[-20:]
-
         return reply
 
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8")
-        print(f"Groq HTTP {e.code}: {body}")
-        if e.code == 429:
-            return "⏳ Rate-limited — try again in a moment!"
-        if e.code in (401, 403):
-            return "❌ Invalid GROQ_API_KEY. Check your Secrets."
-        return f"❌ Groq error ({e.code}). Try again."
+    except asyncio.TimeoutError:
+        return "⏳ AI is taking too long — try again in a moment!"
     except Exception as ex:
         print(f"Groq error: {ex}")
         return "❌ Couldn't reach AI right now. Try again."
