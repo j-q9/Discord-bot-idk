@@ -39,6 +39,7 @@ PREFIX           = "!"
 COOLDOWN_SECONDS = 5
 ADMIN_ROLES      = ["Owner", "Management"]
 ROLL_CHANNEL     = "roll-for-robux"
+ROLL_CHANNEL_ID  = 1490276530452955246
 ROLL_MIN         = 1
 ROLL_MAX         = 350
 
@@ -179,7 +180,7 @@ def has_admin_role(member):
     return member.guild.owner_id == member.id or any(r.name in ADMIN_ROLES for r in member.roles)
 
 def is_roll_channel(channel):
-    return ROLL_CHANNEL in channel.name.lower()
+    return channel.id == ROLL_CHANNEL_ID or ROLL_CHANNEL in channel.name.lower()
 
 # ============================================================
 # GROQ AI
@@ -280,11 +281,23 @@ async def on_message(message):
             number = int(content)
             if ROLL_MIN <= number <= ROLL_MAX:
                 if number == roll_winning_number:
-                    await message.reply(f"🎯 {message.author.mention} cracked it! **{number}** was the number and won **300 Robux**! 🔥")
+                    embed = discord.Embed(
+                        title="🎉 WINNER!",
+                        description=(
+                            f"{message.author.mention} guessed the correct number — **{number}**!\n\n"
+                            "**Create a ticket to claim your Robux!**\n"
+                            "Go to the ticket channel and open a support ticket to receive your reward."
+                        ),
+                        color=discord.Color.gold()
+                    )
+                    embed.set_footer(text="Congratulations! 🏆")
+                    await message.channel.send(embed=embed)
                     roll_winning_number = random.randint(ROLL_MIN, ROLL_MAX)
                     print(f"New winning number: {roll_winning_number}")
                 else:
-                    await message.reply(f"🚨 {message.author.mention} The number was not **{number}**. Try again ⛹️‍♀️")
+                    await message.reply(
+                        f"❌ **{number}** is not the winning number. Keep trying! ({ROLL_MIN}–{ROLL_MAX})"
+                    )
                 return
 
     # Quiz answer
