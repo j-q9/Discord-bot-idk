@@ -510,6 +510,21 @@ async def execute_action(guild, action_obj, channel):
 # EVENTS
 # ============================================================
 @bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("❌ You don't have permission to use that command.")
+    elif isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send(f"❌ Missing argument: `{error.param.name}`. Check `!commands` for usage.")
+    elif isinstance(error, commands.BadArgument):
+        await ctx.send("❌ Couldn't find that member or role. Make sure you @mention them.")
+    elif isinstance(error, commands.BotMissingPermissions):
+        await ctx.send("❌ I'm missing permissions to do that. Give me the **Administrator** role.")
+    elif isinstance(error, commands.CommandNotFound):
+        pass
+    else:
+        print(f"Command error: {error}")
+
+@bot.event
 async def on_ready():
     print(f"✅ {bot.user} is online!")
     await bot.change_presence(activity=discord.Activity(
@@ -642,6 +657,37 @@ async def reset(ctx):
 async def ping(ctx):
     await ctx.send(f"🏓 Pong! **{round(bot.latency * 1000)}ms**")
 
+@bot.command(name="mute")
+@commands.has_permissions(moderate_members=True)
+async def mute(ctx, member: discord.Member, minutes: int = 10, *, reason: str = "No reason"):
+    until = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+    await member.timeout(until, reason=reason)
+    await ctx.send(f"🔇 **{member.display_name}** muted for **{minutes} min**. Reason: {reason}")
+
+@bot.command(name="unmute")
+@commands.has_permissions(moderate_members=True)
+async def unmute(ctx, member: discord.Member):
+    await member.timeout(None)
+    await ctx.send(f"🔊 **{member.display_name}** unmuted.")
+
+@bot.command(name="giverole")
+@commands.has_permissions(manage_roles=True)
+async def giverole(ctx, member: discord.Member, *, role_name: str):
+    role = discord.utils.get(ctx.guild.roles, name=role_name)
+    if not role:
+        return await ctx.send(f"❌ Role **{role_name}** not found.")
+    await member.add_roles(role)
+    await ctx.send(f"✅ **@{role.name}** given to **{member.display_name}**.")
+
+@bot.command(name="removerole")
+@commands.has_permissions(manage_roles=True)
+async def removerole(ctx, member: discord.Member, *, role_name: str):
+    role = discord.utils.get(ctx.guild.roles, name=role_name)
+    if not role:
+        return await ctx.send(f"❌ Role **{role_name}** not found.")
+    await member.remove_roles(role)
+    await ctx.send(f"✅ **@{role.name}** removed from **{member.display_name}**.")
+
 @bot.command(name="clear")
 @commands.has_permissions(manage_messages=True)
 async def clear(ctx, amount: int = 10):
@@ -660,10 +706,16 @@ async def show_commands(ctx):
         ),
         color=discord.Color.blurple()
     )
-    embed.add_field(name="🛡️ Moderation", value=(
+    embed.add_field(name="🛡️ Moderation (direct)", value=(
+        "`!mute @user [minutes] [reason]`\n"
+        "`!unmute @user`\n"
+        "`!giverole @user RoleName`\n"
+        "`!removerole @user RoleName`\n"
+        "`!clear [amount]`"
+    ), inline=False)
+    embed.add_field(name="🤖 AI Moderation", value=(
         "`!ai ban @user for spamming`\n"
         "`!ai kick @user`\n"
-        "`!ai mute @user for 10 minutes`\n"
         "`!ai warn @user for being rude`\n"
         "`!ai change @user's nickname to CoolName`"
     ), inline=False)
