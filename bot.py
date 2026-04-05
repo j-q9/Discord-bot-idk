@@ -66,6 +66,10 @@ welcome_config       = {}
 farewell_config      = {}
 warn_records         = {}
 roll_winning_number  = random.randint(ROLL_MIN, ROLL_MAX)
+roll_lose_emojis     = ["😋", "😊", "😉", "😔", "😓", "🤫", "🥺", "😇"]
+roll_win_emojis      = ["😍", "😎", "🥰", "😀", "🤩", "😛"]
+roll_lose_index      = 0
+roll_win_index       = 0
 
 # ============================================================
 # QUIZ BANK
@@ -260,7 +264,7 @@ async def on_member_remove(member):
 
 @bot.event
 async def on_message(message):
-    global roll_winning_number
+    global roll_winning_number, roll_lose_index, roll_win_index
     if message.author.bot:
         return
 
@@ -282,28 +286,36 @@ async def on_message(message):
             if ROLL_MIN <= number <= ROLL_MAX:
                 won = random.random() < 0.05
                 if won:
-                    bot_roll = number  # bot's roll "matches"
+                    bot_roll = number
                 else:
-                    # pick any number that isn't the user's
                     choices = [n for n in range(ROLL_MIN, ROLL_MAX + 1) if n != number]
                     bot_roll = random.choice(choices)
 
                 if won:
+                    emoji = roll_win_emojis[roll_win_index % len(roll_win_emojis)]
+                    roll_win_index += 1
                     embed = discord.Embed(
-                        title="🎉 WINNER!",
+                        title=f"{emoji} Congratulations!",
                         description=(
-                            f"{message.author.mention} picked **{number}** — bot rolled **{bot_roll}** 🎯\n\n"
+                            f"You have rolled the correct number.\n"
+                            f"The number is **{number}**.\n\n"
                             "**Create a ticket to claim your Robux!**\n"
-                            "Go to the ticket channel and open a support ticket to receive your reward."
+                            "Open a support ticket to receive your reward."
                         ),
                         color=discord.Color.gold()
                     )
-                    embed.set_footer(text="Congratulations! 🏆")
+                    embed.set_footer(text=f"Rolled by {message.author.display_name}")
                     await message.channel.send(embed=embed)
                 else:
-                    await message.reply(
-                        f"🎲 You picked **{number}** — bot rolled **{bot_roll}**. ❌ No match! Keep trying! ({ROLL_MIN}–{ROLL_MAX})"
+                    emoji = roll_lose_emojis[roll_lose_index % len(roll_lose_emojis)]
+                    roll_lose_index += 1
+                    embed = discord.Embed(
+                        title=f"{emoji} Not this time!",
+                        description=f"The number was **{bot_roll}**. Try again next time.",
+                        color=discord.Color.red()
                     )
+                    embed.set_footer(text=f"Range: {ROLL_MIN}–{ROLL_MAX}")
+                    await message.reply(embed=embed)
                 return
 
     # Quiz answer
