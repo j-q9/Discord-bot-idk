@@ -5,18 +5,42 @@ import json
 import re
 import os
 from datetime import datetime, timedelta, timezone
+from threading import Thread
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import aiohttp
+import random
 
 def utcnow():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 # ============================================================
+# KEEP ALIVE
+# ============================================================
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is alive!")
+    def log_message(self, *args):
+        pass
+
+def keep_alive():
+    server = HTTPServer(("0.0.0.0", 8080), Handler)
+    server.serve_forever()
+
+Thread(target=keep_alive, daemon=True).start()
+
+# ============================================================
 # CONFIG
 # ============================================================
-DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "")
-GROQ_API_KEY  = os.environ.get("GROQ_API_KEY", "")
-PREFIX        = "!"
+DISCORD_TOKEN    = os.environ.get("DISCORD_TOKEN", "")
+GROQ_API_KEY     = os.environ.get("GROQ_API_KEY", "")
+PREFIX           = "!"
 COOLDOWN_SECONDS = 5
+ADMIN_ROLES      = ["Owner", "Management"]
+ROLL_CHANNEL     = "roll-for-robux"
+ROLL_MIN         = 1
+ROLL_MAX         = 350
 
 # ============================================================
 # INTENTS
@@ -29,513 +53,182 @@ intents.guilds  = True
 bot = commands.Bot(command_prefix=PREFIX, intents=intents)
 
 # ============================================================
-# STATE  (in-memory — resets on bot restart)
+# STATE
 # ============================================================
-user_last_called     = {}   # user_id  -> datetime
-conversation_history = {}   # user_id  -> list of {role, content}
-auto_role_config     = {}   # guild_id -> role_name
-welcome_config       = {}   # guild_id -> {channel_name, message}
-farewell_config      = {}   # guild_id -> {channel_name, message}
-word_filter          = {}   # guild_id -> set of words
+user_last_called     = {}
+conversation_history = {}
+user_points          = {}
+quiz_active          = {}
+word_filter          = {}
+auto_role_config     = {}
+welcome_config       = {}
+farewell_config      = {}
+warn_records         = {}
+roll_winning_number  = random.randint(ROLL_MIN, ROLL_MAX)
+
+# ============================================================
+# QUIZ BANK
+# ============================================================
+QUIZ_BANK = [
+    ("What is the capital of France?", "paris"),
+    ("What is 7 x 8?", "56"),
+    ("What planet is known as the Red Planet?", "mars"),
+    ("How many sides does a hexagon have?", "6"),
+    ("What is the largest ocean on Earth?", "pacific"),
+    ("Who wrote Romeo and Juliet?", "shakespeare"),
+    ("What is the chemical symbol for water?", "h2o"),
+    ("How many continents are there?", "7"),
+    ("What is the fastest land animal?", "cheetah"),
+    ("What is the square root of 144?", "12"),
+    ("What country has the largest population?", "india"),
+    ("How many days are in a leap year?", "366"),
+    ("What gas do plants absorb?", "carbon dioxide"),
+    ("What is the hardest natural substance?", "diamond"),
+    ("How many bones are in the human body?", "206"),
+    ("What is the longest river in the world?", "nile"),
+    ("What is the capital of Japan?", "tokyo"),
+    ("How many players are on a football team?", "11"),
+    ("What is the boiling point of water in Celsius?", "100"),
+    ("What is the capital of Germany?", "berlin"),
+    ("How many seconds are in a minute?", "60"),
+    ("What is the largest planet?", "jupiter"),
+    ("Who invented the telephone?", "bell"),
+    ("What is the smallest country?", "vatican"),
+    ("How many letters in the English alphabet?", "26"),
+    ("What is the currency of Japan?", "yen"),
+    ("What is the capital of Australia?", "canberra"),
+    ("How many hours in a day?", "24"),
+    ("What language is spoken in Brazil?", "portuguese"),
+    ("What is the capital of Canada?", "ottawa"),
+    ("Who painted the Mona Lisa?", "da vinci"),
+    ("What is the tallest mountain?", "everest"),
+    ("How many planets in our solar system?", "8"),
+    ("What is the capital of Italy?", "rome"),
+    ("What is the largest continent?", "asia"),
+    ("How many colors are in a rainbow?", "7"),
+    ("What is the capital of Spain?", "madrid"),
+    ("Who was the first US president?", "washington"),
+    ("What is the capital of China?", "beijing"),
+    ("What is the largest desert?", "sahara"),
+    ("How many teeth does an adult have?", "32"),
+    ("What is the capital of Russia?", "moscow"),
+    ("What animal is the king of the jungle?", "lion"),
+    ("How many strings does a guitar have?", "6"),
+    ("What is the capital of Brazil?", "brasilia"),
+    ("What is the nearest star to Earth?", "sun"),
+    ("What is the capital of India?", "new delhi"),
+    ("How many wheels does a tricycle have?", "3"),
+    ("What is the largest organ in the body?", "skin"),
+    ("What is the capital of Mexico?", "mexico city"),
+    ("Who discovered gravity?", "newton"),
+    ("How many days in a week?", "7"),
+    ("What is the capital of South Korea?", "seoul"),
+    ("What is the most spoken language?", "mandarin"),
+    ("How many chambers does the heart have?", "4"),
+    ("What is the capital of Egypt?", "cairo"),
+    ("What is the chemical symbol for gold?", "au"),
+    ("How many months have 31 days?", "7"),
+    ("What is the capital of Turkey?", "ankara"),
+    ("Who invented the light bulb?", "edison"),
+    ("What is the capital of Argentina?", "buenos aires"),
+    ("What is the largest mammal?", "blue whale"),
+    ("How many sides does a triangle have?", "3"),
+    ("What is the chemical symbol for iron?", "fe"),
+    ("How many years in a decade?", "10"),
+    ("What is the tallest animal?", "giraffe"),
+    ("How many cents in a dollar?", "100"),
+    ("What gas do humans breathe?", "oxygen"),
+    ("How many sides does a pentagon have?", "5"),
+    ("What is the largest bird?", "ostrich"),
+    ("How many years in a century?", "100"),
+    ("Who wrote Harry Potter?", "rowling"),
+    ("How many hours in a week?", "168"),
+    ("What is the smallest planet?", "mercury"),
+    ("How many degrees in a right angle?", "90"),
+    ("What is the capital of Bangladesh?", "dhaka"),
+    ("Most common gas in atmosphere?", "nitrogen"),
+    ("How many sides does an octagon have?", "8"),
+    ("What is the largest country by area?", "russia"),
+    ("How many cards in a standard deck?", "52"),
+    ("What is the symbol for pi?", "3.14"),
+    ("How many legs does a spider have?", "8"),
+    ("What is the hottest planet?", "venus"),
+    ("How many minutes in a day?", "1440"),
+    ("What year did WW2 end?", "1945"),
+    ("How many players in basketball?", "5"),
+    ("What is the capital of Greece?", "athens"),
+    ("How many keys on a piano?", "88"),
+    ("What is the capital of Portugal?", "lisbon"),
+    ("How many bytes in a kilobyte?", "1024"),
+    ("What is the capital of Netherlands?", "amsterdam"),
+    ("How many sides does a cube have?", "6"),
+    ("What is the capital of Sweden?", "stockholm"),
+    ("How many players in volleyball?", "6"),
+    ("What is the capital of Denmark?", "copenhagen"),
+    ("What is the capital of Norway?", "oslo"),
+    ("What is the atomic number of carbon?", "6"),
+    ("What is the capital of Pakistan?", "islamabad"),
+    ("What is the capital of Philippines?", "manila"),
+    ("What year did WW1 start?", "1914"),
+]
+
+# ============================================================
+# HELPERS
+# ============================================================
+def has_admin_role(member):
+    return member.guild.owner_id == member.id or any(r.name in ADMIN_ROLES for r in member.roles)
+
+def is_roll_channel(channel):
+    return ROLL_CHANNEL in channel.name.lower()
 
 # ============================================================
 # GROQ AI
 # ============================================================
-GROQ_SYSTEM_PROMPT = """You are an AI-powered Discord server manager bot. You can chat about ANYTHING and also manage Discord servers.
-
-WHEN THE USER WANTS A SERVER ACTION, respond ONLY with a valid JSON object on one line, no markdown, no explanation:
-{"action": "ACTION_NAME", "data": {...}}
-
-Available actions:
-- ban_member            {"user_id": "ID", "reason": "..."}
-- kick_member           {"user_id": "ID", "reason": "..."}
-- mute_member           {"user_id": "ID", "duration_minutes": 10, "reason": "..."}
-- warn_member           {"user_id": "ID", "reason": "..."}
-- change_nickname       {"user_id": "ID", "nickname": "new name"}
-- create_channel        {"name": "...", "type": "text|voice|category|announcement|forum", "category_name": "optional"}
-- delete_channel        {"channel_name": "..."}
-- rename_channel        {"old_name": "...", "new_name": "..."}
-- create_role           {"name": "...", "color_hex": "#5865F2", "hoist": false}
-- delete_role           {"role_name": "..."}
-- assign_role           {"user_id": "ID", "role_name": "..."}
-- remove_role_from_user {"user_id": "ID", "role_name": "..."}
-- set_auto_role         {"role_name": "..."}
-- disable_auto_role     {}
-- setup_welcome         {"channel_name": "welcome", "message": "Welcome {member} to {server}!"}
-- setup_farewell        {"channel_name": "general", "message": "Goodbye {member}!"}
-- add_word_filter       {"words": ["word1", "word2"]}
-- remove_word_filter    {"words": ["word1"]}
-- send_announcement     {"channel_name": "announcements", "title": "...", "message": "...", "color_hex": "#5865F2"}
-- set_slowmode          {"channel_name": "...", "seconds": 5}
-- create_giveaway       {"channel_name": "giveaway", "prize": "...", "duration_hours": 24, "winners": 1}
-- purge_user_messages   {"user_id": "ID", "filter": "all|images|links|text", "limit": 100}
-- query_members         {}
-- query_channels        {}
-- query_roles           {}
-- query_server          {}
-
-User mentions look like <@123456789012345678>. Extract only the digits as user_id.
-
-For EVERYTHING ELSE (chat, questions, jokes, opinions, general talk) — respond naturally, short (1-3 sentences), casual and friendly tone, occasional emojis."""
-
+GROQ_SYSTEM_PROMPT = """You are a friendly Discord bot assistant. Chat about ANYTHING — answer questions, tell jokes, give opinions, help with homework, discuss games, etc.
+Be short (1-3 sentences), casual, friendly, with occasional emojis. You are a chat companion."""
 
 async def ask_groq(user_id, message):
     if not GROQ_API_KEY:
-        return "⚠️ No GROQ_API_KEY set — add it in Secrets!"
-
+        return "⚠️ No GROQ_API_KEY set in Secrets!"
     history  = conversation_history.get(user_id, [])
     messages = [{"role": "system", "content": GROQ_SYSTEM_PROMPT}]
     messages += history[-10:]
     messages.append({"role": "user", "content": message})
-
-    payload = {
-        "model":       "llama-3.1-8b-instant",
-        "messages":    messages,
-        "max_tokens":  300,
-        "temperature": 0.7,
-    }
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type":  "application/json",
-        "Accept":        "application/json",
-    }
-
+    payload = {"model": "llama-3.1-8b-instant", "messages": messages, "max_tokens": 300, "temperature": 0.7}
+    headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                json=payload,
-                headers=headers,
-                timeout=aiohttp.ClientTimeout(total=25),
-            ) as resp:
+            async with session.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=25)) as resp:
                 if resp.status == 429:
                     return "⏳ Rate-limited — try again in a moment!"
                 if resp.status in (401, 403):
-                    body = await resp.text()
-                    print(f"Groq auth error {resp.status}: {body}")
-                    return "❌ Invalid GROQ_API_KEY. Check your Secrets."
+                    return "❌ Invalid GROQ_API_KEY."
                 if resp.status != 200:
-                    body = await resp.text()
-                    print(f"Groq HTTP {resp.status}: {body}")
                     return f"❌ Groq error ({resp.status}). Try again."
-
                 result = await resp.json()
                 reply  = result["choices"][0]["message"]["content"].strip()
-
         h = conversation_history.setdefault(user_id, [])
-        h.append({"role": "user",      "content": message})
+        h.append({"role": "user", "content": message})
         h.append({"role": "assistant", "content": reply})
         conversation_history[user_id] = h[-20:]
         return reply
-
     except asyncio.TimeoutError:
-        return "⏳ AI is taking too long — try again in a moment!"
+        return "⏳ AI is taking too long — try again!"
     except Exception as ex:
         print(f"Groq error: {ex}")
-        return "❌ Couldn't reach AI right now. Try again."
-
-# ============================================================
-# PROCESS MESSAGE
-# ============================================================
-async def process_message(user_id, user_input, guild=None, bot_latency=None):
-    """Returns (text_reply, action_obj_or_None)."""
-
-    # Hidden easter egg
-    if re.sub(r"[^a-z]", "", user_input.lower()) in ("whoisgay", "whosgay"):
-        if guild:
-            target = discord.utils.find(
-                lambda m: "miloparade" in m.name.lower() or "miloparade" in m.display_name.lower(),
-                guild.members
-            )
-            if target:
-                return target.mention, None
-        return "@miloparade", None
-
-    raw = await ask_groq(user_id, user_input)
-
-    # Try to parse as a JSON server action
-    try:
-        cleaned = raw.strip()
-        # Strip markdown fences if present
-        cleaned = re.sub(r"^```(?:json)?|```$", "", cleaned, flags=re.MULTILINE).strip()
-
-        if cleaned.startswith("{"):
-            obj = json.loads(cleaned)
-            if "action" in obj:
-                action = obj["action"]
-                data   = obj.get("data", {})
-
-                # Handle query actions locally with live Discord data
-                if guild:
-                    if action == "query_members":
-                        bots   = sum(1 for m in guild.members if m.bot)
-                        humans = guild.member_count - bots
-                        return (
-                            f"**{guild.name}** has **{guild.member_count}** members "
-                            f"— {humans} humans, {bots} bots."
-                        ), None
-
-                    if action == "query_channels":
-                        text_ch  = [f"#{c.name}" for c in guild.text_channels][:15]
-                        voice_ch = [f"🔊 {c.name}" for c in guild.voice_channels][:10]
-                        return (
-                            f"**Text ({len(guild.text_channels)}):** {', '.join(text_ch) or 'none'}\n"
-                            f"**Voice ({len(guild.voice_channels)}):** {', '.join(voice_ch) or 'none'}"
-                        ), None
-
-                    if action == "query_roles":
-                        roles = [f"`@{r.name}`" for r in guild.roles if r.name != "@everyone"]
-                        return f"**Roles ({len(roles)}):** {', '.join(roles) or 'none'}", None
-
-                    if action == "query_server":
-                        return (
-                            f"**{guild.name}**\n"
-                            f"👑 Owner: {guild.owner.display_name if guild.owner else 'Unknown'}\n"
-                            f"👥 Members: {guild.member_count}\n"
-                            f"📢 Channels: {len(guild.channels)}\n"
-                            f"🏷️ Roles: {len(guild.roles)}\n"
-                            f"💎 Boosts: {guild.premium_subscription_count or 0} (Level {guild.premium_tier})"
-                        ), None
-
-                return None, obj
-
-    except (json.JSONDecodeError, ValueError):
-        pass
-
-    # Plain text — just chat
-    return raw, None
-
-# ============================================================
-# ACTION EXECUTOR
-# ============================================================
-async def execute_action(guild, action_obj, channel):
-    action = action_obj.get("action", "")
-    data   = action_obj.get("data", {})
-
-    try:
-        # ── Moderation ──────────────────────────────────────────
-        if action == "ban_member":
-            member = guild.get_member(int(data["user_id"]))
-            if not member:
-                return await channel.send("❌ Member not found in this server.")
-            await member.ban(reason=data.get("reason", "No reason provided"))
-            await channel.send(
-                f"🔨 **{member.display_name}** has been banned. "
-                f"Reason: {data.get('reason', 'N/A')}"
-            )
-
-        elif action == "kick_member":
-            member = guild.get_member(int(data["user_id"]))
-            if not member:
-                return await channel.send("❌ Member not found in this server.")
-            await member.kick(reason=data.get("reason", "No reason provided"))
-            await channel.send(
-                f"👢 **{member.display_name}** has been kicked. "
-                f"Reason: {data.get('reason', 'N/A')}"
-            )
-
-        elif action == "mute_member":
-            member = guild.get_member(int(data["user_id"]))
-            if not member:
-                return await channel.send("❌ Member not found in this server.")
-            minutes = int(data.get("duration_minutes", 10))
-            until   = datetime.now(timezone.utc) + timedelta(minutes=minutes)
-            await member.timeout(until, reason=data.get("reason", "No reason provided"))
-            await channel.send(
-                f"🔇 **{member.display_name}** muted for **{minutes} minutes**. "
-                f"Reason: {data.get('reason', 'N/A')}"
-            )
-
-        elif action == "warn_member":
-            member = guild.get_member(int(data["user_id"]))
-            if not member:
-                return await channel.send("❌ Member not found in this server.")
-            embed = discord.Embed(
-                title="⚠️ Warning",
-                description=f"**Server:** {guild.name}\n**Reason:** {data.get('reason', 'No reason')}",
-                color=discord.Color.yellow()
-            )
-            try:
-                await member.send(embed=embed)
-            except Exception:
-                pass
-            await channel.send(
-                f"⚠️ **{member.display_name}** warned. "
-                f"Reason: {data.get('reason', 'N/A')}"
-            )
-
-        elif action == "change_nickname":
-            member = guild.get_member(int(data["user_id"]))
-            if not member:
-                return await channel.send("❌ Member not found in this server.")
-            old_nick = member.display_name
-            new_nick = data.get("nickname") or None
-            await member.edit(nick=new_nick)
-            await channel.send(
-                f"✏️ Nickname changed: **{old_nick}** → **{new_nick or '(reset to username)'}**"
-            )
-
-        # ── Channels ─────────────────────────────────────────────
-        elif action == "create_channel":
-            ch_type = data.get("type", "text").lower()
-            name    = data.get("name", "new-channel")
-            category = None
-            if data.get("category_name"):
-                category = discord.utils.get(guild.categories, name=data["category_name"])
-                if not category:
-                    category = await guild.create_category(data["category_name"])
-
-            if ch_type == "voice":
-                ch = await guild.create_voice_channel(name, category=category)
-                await channel.send(f"✅ Voice channel **{ch.name}** created!")
-
-            elif ch_type == "category":
-                cat = await guild.create_category(name)
-                await channel.send(f"✅ Category **{cat.name}** created!")
-
-            elif ch_type == "announcement":
-                ch = await guild.create_text_channel(name, category=category)
-                try:
-                    await ch.edit(type=discord.ChannelType.news)
-                    await channel.send(f"📢 Announcement channel **#{ch.name}** created!")
-                except Exception:
-                    await channel.send(
-                        f"✅ Channel **#{ch.name}** created! "
-                        "(Announcement type requires a Community server)"
-                    )
-
-            elif ch_type == "forum":
-                try:
-                    ch = await guild.create_forum(name, category=category)
-                    await channel.send(f"💬 Forum channel **#{ch.name}** created!")
-                except Exception:
-                    ch = await guild.create_text_channel(name, category=category)
-                    await channel.send(
-                        f"✅ Channel **#{ch.name}** created! "
-                        "(Forum type requires a Community server)"
-                    )
-
-            else:
-                ch = await guild.create_text_channel(name, category=category)
-                await channel.send(f"✅ Text channel **#{ch.name}** created!")
-
-        elif action == "delete_channel":
-            ch = discord.utils.get(guild.channels, name=data.get("channel_name", ""))
-            if not ch:
-                return await channel.send(f"❌ Channel **#{data.get('channel_name')}** not found.")
-            name = ch.name
-            await ch.delete()
-            await channel.send(f"🗑️ Channel **#{name}** deleted.")
-
-        elif action == "rename_channel":
-            ch = discord.utils.get(guild.channels, name=data.get("old_name", ""))
-            if not ch:
-                return await channel.send(f"❌ Channel **#{data.get('old_name')}** not found.")
-            await ch.edit(name=data["new_name"])
-            await channel.send(
-                f"✏️ Channel renamed: **#{data['old_name']}** → **#{data['new_name']}**"
-            )
-
-        # ── Roles ─────────────────────────────────────────────────
-        elif action == "create_role":
-            color_hex = data.get("color_hex", "#5865F2").replace("#", "")
-            color = discord.Color(int(color_hex, 16))
-            role  = await guild.create_role(
-                name=data["name"], color=color, hoist=data.get("hoist", False)
-            )
-            await channel.send(f"✅ Role **@{role.name}** created!")
-
-        elif action == "delete_role":
-            role = discord.utils.get(guild.roles, name=data.get("role_name", ""))
-            if not role:
-                return await channel.send(f"❌ Role **@{data.get('role_name')}** not found.")
-            name = role.name
-            await role.delete()
-            await channel.send(f"🗑️ Role **@{name}** deleted.")
-
-        elif action == "assign_role":
-            member = guild.get_member(int(data["user_id"]))
-            role   = discord.utils.get(guild.roles, name=data.get("role_name", ""))
-            if not member or not role:
-                return await channel.send("❌ Member or role not found.")
-            await member.add_roles(role)
-            await channel.send(f"✅ **@{role.name}** given to **{member.display_name}**.")
-
-        elif action == "remove_role_from_user":
-            member = guild.get_member(int(data["user_id"]))
-            role   = discord.utils.get(guild.roles, name=data.get("role_name", ""))
-            if not member or not role:
-                return await channel.send("❌ Member or role not found.")
-            await member.remove_roles(role)
-            await channel.send(f"✅ **@{role.name}** removed from **{member.display_name}**.")
-
-        elif action == "set_auto_role":
-            role_name = data.get("role_name", "")
-            auto_role_config[guild.id] = role_name
-            await channel.send(
-                f"✅ Auto-role set to **@{role_name}**! "
-                "Every new member will automatically receive this role."
-            )
-
-        elif action == "disable_auto_role":
-            auto_role_config.pop(guild.id, None)
-            await channel.send("✅ Auto-role has been disabled.")
-
-        # ── Welcome / Farewell ────────────────────────────────────
-        elif action == "setup_welcome":
-            welcome_config[guild.id] = {
-                "channel_name": data.get("channel_name", "welcome"),
-                "message":      data.get("message", "Welcome {member} to {server}!"),
-            }
-            await channel.send(
-                f"✅ Welcome messages enabled in **#{data.get('channel_name', 'welcome')}**!"
-            )
-
-        elif action == "setup_farewell":
-            farewell_config[guild.id] = {
-                "channel_name": data.get("channel_name", "general"),
-                "message":      data.get("message", "Goodbye {member}!"),
-            }
-            await channel.send(
-                f"✅ Farewell messages enabled in **#{data.get('channel_name', 'general')}**!"
-            )
-
-        # ── Word Filter ───────────────────────────────────────────
-        elif action == "add_word_filter":
-            words = [w.lower() for w in data.get("words", [])]
-            if not words:
-                return await channel.send("❌ No words provided.")
-            word_filter.setdefault(guild.id, set()).update(words)
-            await channel.send(
-                f"🚫 **{len(words)}** word(s) added to the filter. "
-                "Messages containing them will be auto-deleted."
-            )
-
-        elif action == "remove_word_filter":
-            words = [w.lower() for w in data.get("words", [])]
-            if guild.id in word_filter:
-                word_filter[guild.id] -= set(words)
-            await channel.send(f"✅ **{len(words)}** word(s) removed from the filter.")
-
-        # ── Utility ───────────────────────────────────────────────
-        elif action == "send_announcement":
-            ch_name = data.get("channel_name", "announcements")
-            ch = discord.utils.get(guild.text_channels, name=ch_name)
-            if not ch:
-                ch = await guild.create_text_channel(ch_name)
-            color_hex = data.get("color_hex", "5865F2").replace("#", "")
-            embed = discord.Embed(
-                title=data.get("title", "📢 Announcement"),
-                description=data.get("message", ""),
-                color=discord.Color(int(color_hex, 16)),
-                timestamp=utcnow()
-            )
-            await ch.send(embed=embed)
-            await channel.send(f"📢 Announcement sent to **#{ch.name}**!")
-
-        elif action == "set_slowmode":
-            ch = discord.utils.get(guild.text_channels, name=data.get("channel_name", ""))
-            if not ch:
-                return await channel.send(f"❌ Channel **#{data.get('channel_name')}** not found.")
-            secs = int(data.get("seconds", 0))
-            await ch.edit(slowmode_delay=secs)
-            await channel.send(f"🐢 Slowmode set to **{secs}s** in **#{ch.name}**.")
-
-        elif action == "purge_user_messages":
-            member = guild.get_member(int(data["user_id"]))
-            if not member:
-                return await channel.send("❌ Member not found in this server.")
-            filter_type = data.get("filter", "all").lower()
-            limit       = min(int(data.get("limit", 100)), 500)
-
-            def check(m):
-                if m.author.id != member.id:
-                    return False
-                if filter_type == "images":
-                    return bool(m.attachments) or any(
-                        ext in m.content.lower()
-                        for ext in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".mp4", ".mov"]
-                    )
-                if filter_type == "links":
-                    return bool(re.search(r"https?://", m.content))
-                if filter_type == "text":
-                    return not m.attachments and not re.search(r"https?://", m.content)
-                return True  # "all"
-
-            deleted = await channel.purge(limit=limit, check=check)
-            label = {
-                "images": "image/video",
-                "links":  "link",
-                "text":   "text-only",
-                "all":    "",
-            }.get(filter_type, "")
-            await channel.send(
-                f"🗑️ Deleted **{len(deleted)}** {label+' ' if label else ''}message(s) from **{member.display_name}**.",
-                delete_after=10
-            )
-
-        elif action == "create_giveaway":
-            ch_name = data.get("channel_name", "giveaways")
-            ch = discord.utils.get(guild.text_channels, name=ch_name)
-            if not ch:
-                ch = await guild.create_text_channel(ch_name)
-            end_time = utcnow() + timedelta(hours=float(data.get("duration_hours", 24)))
-            embed = discord.Embed(
-                title=f"🎉 GIVEAWAY: {data.get('prize', 'Mystery Prize')}",
-                description=(
-                    f"React with 🎉 to enter!\n\n"
-                    f"**Winners:** {data.get('winners', 1)}\n"
-                    f"**Ends:** <t:{int(end_time.timestamp())}:R>"
-                ),
-                color=discord.Color.gold(),
-                timestamp=end_time
-            )
-            embed.set_footer(text="Ends at")
-            msg = await ch.send(embed=embed)
-            await msg.add_reaction("🎉")
-            await channel.send(f"🎉 Giveaway live in **#{ch.name}**! → {msg.jump_url}")
-
-        else:
-            await channel.send(f"⚠️ Unknown action: `{action}`")
-
-    except discord.Forbidden:
-        await channel.send(
-            "❌ Missing permissions! Make sure I have the **Administrator** role."
-        )
-    except Exception as e:
-        print(f"execute_action error ({action}): {e}")
-        await channel.send(f"❌ Error: `{e}`")
+        return "❌ Couldn't reach AI right now."
 
 # ============================================================
 # EVENTS
 # ============================================================
 @bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send("❌ You don't have permission to use that command.")
-    elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(f"❌ Missing argument: `{error.param.name}`. Check `!commands` for usage.")
-    elif isinstance(error, commands.BadArgument):
-        await ctx.send("❌ Couldn't find that member or role. Make sure you @mention them.")
-    elif isinstance(error, commands.BotMissingPermissions):
-        await ctx.send("❌ I'm missing permissions to do that. Give me the **Administrator** role.")
-    elif isinstance(error, commands.CommandNotFound):
-        pass
-    else:
-        print(f"Command error: {error}")
-
-@bot.event
 async def on_ready():
-    print(f"✅ {bot.user} is online!")
-    await bot.change_presence(activity=discord.Activity(
-        type=discord.ActivityType.watching, name="your server 👁️"
-    ))
+    print(f"✅ {bot.user} is online! Roll winning number: {roll_winning_number}")
+    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="your server 👁️"))
 
 @bot.event
 async def on_member_join(member):
     guild = member.guild
-
-    # Auto-role
     role_name = auto_role_config.get(guild.id)
     if role_name:
         role = discord.utils.get(guild.roles, name=role_name)
@@ -544,219 +237,351 @@ async def on_member_join(member):
                 await member.add_roles(role)
             except Exception:
                 pass
-
-    # Welcome message
     cfg = welcome_config.get(guild.id)
-    if cfg:
-        ch = discord.utils.get(guild.text_channels, name=cfg["channel_name"])
-        if ch:
-            msg = (
-                cfg["message"]
-                .replace("{member}", member.mention)
-                .replace("{server}", guild.name)
-            )
-            embed = discord.Embed(
-                description=msg,
-                color=discord.Color.green(),
-                timestamp=utcnow()
-            )
-            embed.set_author(
-                name=f"Welcome to {guild.name}!",
-                icon_url=member.display_avatar.url
-            )
-            await ch.send(embed=embed)
-    else:
-        # Default welcome (if no config but channel exists)
-        ch = discord.utils.get(guild.text_channels, name="welcome")
-        if ch:
-            embed = discord.Embed(
-                title=f"👋 Welcome to {guild.name}!",
-                description=(
-                    f"Hey {member.mention}, glad to have you here! "
-                    f"You're member **#{guild.member_count}**."
-                ),
-                color=discord.Color.green(),
-                timestamp=utcnow()
-            )
-            embed.set_thumbnail(url=member.display_avatar.url)
-            await ch.send(embed=embed)
+    ch_name = cfg["channel_name"] if cfg else "welcome"
+    ch = discord.utils.get(guild.text_channels, name=ch_name)
+    if ch:
+        msg = (cfg["message"] if cfg else "Welcome {member} to {server}!").replace("{member}", member.mention).replace("{server}", guild.name)
+        embed = discord.Embed(description=msg, color=discord.Color.green(), timestamp=utcnow())
+        embed.set_author(name=f"Welcome to {guild.name}!", icon_url=member.display_avatar.url)
+        await ch.send(embed=embed)
 
 @bot.event
 async def on_member_remove(member):
-    guild = member.guild
-    cfg   = farewell_config.get(guild.id)
+    cfg = farewell_config.get(member.guild.id)
     if cfg:
-        ch = discord.utils.get(guild.text_channels, name=cfg["channel_name"])
+        ch = discord.utils.get(member.guild.text_channels, name=cfg["channel_name"])
         if ch:
-            msg = (
-                cfg["message"]
-                .replace("{member}", member.display_name)
-                .replace("{server}", guild.name)
-            )
-            embed = discord.Embed(
-                description=msg,
-                color=discord.Color.red(),
-                timestamp=utcnow()
-            )
-            embed.set_author(
-                name="Member left",
-                icon_url=member.display_avatar.url
-            )
+            msg = cfg["message"].replace("{member}", member.display_name).replace("{server}", member.guild.name)
+            embed = discord.Embed(description=msg, color=discord.Color.red(), timestamp=utcnow())
+            embed.set_author(name="Member left", icon_url=member.display_avatar.url)
             await ch.send(embed=embed)
 
 @bot.event
 async def on_message(message):
+    global roll_winning_number
     if message.author.bot:
         return
 
-    # Word filter — auto-delete censored messages
+    # Word filter
     if message.guild and message.guild.id in word_filter:
-        content_lower = message.content.lower()
-        if any(w in content_lower for w in word_filter[message.guild.id]):
+        if any(w in message.content.lower() for w in word_filter[message.guild.id]):
             try:
                 await message.delete()
-                await message.channel.send(
-                    f"🚫 {message.author.mention} Your message was removed — it contained a filtered word.",
-                    delete_after=5
-                )
+                await message.channel.send(f"🚫 {message.author.mention} Message removed — filtered word.", delete_after=5)
             except Exception:
                 pass
             return
 
+    # Roll for Robux
+    if message.guild and is_roll_channel(message.channel):
+        content = message.content.strip()
+        if re.match(r"^\d+$", content):
+            number = int(content)
+            if ROLL_MIN <= number <= ROLL_MAX:
+                if number == roll_winning_number:
+                    await message.reply(f"🎯 {message.author.mention} cracked it! **{number}** was the number and won **300 Robux**! 🔥")
+                    roll_winning_number = random.randint(ROLL_MIN, ROLL_MAX)
+                    print(f"New winning number: {roll_winning_number}")
+                else:
+                    await message.reply(f"🚨 {message.author.mention} The number was not **{number}**. Try again ⛹️‍♀️")
+                return
+
+    # Quiz answer
+    ch_id = message.channel.id
+    if ch_id in quiz_active and not message.content.startswith(PREFIX):
+        q = quiz_active[ch_id]
+        if message.author.id == q["user_id"]:
+            answer = message.content.strip().lower()
+            correct = q["answer"].lower()
+            if answer == correct or correct in answer:
+                pts = user_points.get(message.author.id, 0) + 10
+                user_points[message.author.id] = pts
+                del quiz_active[ch_id]
+                await message.reply(f"✅ Correct! You earned **10 points**. Total: **{pts} pts** 🎉")
+            else:
+                del quiz_active[ch_id]
+                await message.reply(f"❌ Wrong! The correct answer was **{q['answer']}**.")
+            return
+
     await bot.process_commands(message)
 
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.MissingRequiredArgument):
+        await ctx.send(f"❌ Missing argument: `{error.param.name}`.")
+    elif isinstance(error, commands.BadArgument):
+        await ctx.send("❌ Couldn't find that member or role.")
+    elif isinstance(error, commands.CommandNotFound):
+        pass
+    else:
+        print(f"Error: {error}")
+
 # ============================================================
-# COMMANDS
+# !ai — main command (members + admins)
 # ============================================================
-@bot.command(name="ai", aliases=["agent", "a"])
-async def ai_agent(ctx, *, user_input: str):
+@bot.command(name="ai", aliases=["a"])
+async def ai_cmd(ctx, *, user_input: str):
+    lower = user_input.lower().strip()
+
+    # !ai commands — shows full embed, but admin section only visible to admins
+    if lower in ("commands", "cmds", "help"):
+        embed = discord.Embed(
+            title="🤖 AI Server Manager",
+            description="Just tell me what you want in plain English using `!ai`.\nNo commands to memorise — the AI understands you.",
+            color=discord.Color.blurple()
+        )
+        embed.add_field(name="🤖 AI Chat", value="`!ai [anything]` — Ask me anything!", inline=False)
+        embed.add_field(name="🧠 Quiz & Points", value="`!quiz` — Start a quiz (10 pts per correct answer)\n`!points` — Check your points\n`!leaderboard` — Top 10 players", inline=False)
+        embed.add_field(name="🎲 Roll for Robux", value=f"Type a number between **{ROLL_MIN}–{ROLL_MAX}** in the roll channel!\nGuess the winning number and win **300 Robux**!", inline=False)
+        embed.add_field(name="🔧 Utility", value="`!reset` — Clear your AI chat history\n`!ping` — Bot latency", inline=False)
+
+        if has_admin_role(ctx.author):
+            embed.add_field(name="🛡️ Moderation (Admin only)", value=(
+                "`!mute @user [minutes] [reason]`\n"
+                "`!unmute @user`\n"
+                "`!ban @user [reason]`\n"
+                "`!unban [username]`\n"
+                "`!kick @user [reason]`\n"
+                "`!warn @user [reason]`\n"
+                "`!warnings @user`\n"
+                "`!clear [amount]`"
+            ), inline=False)
+            embed.add_field(name="🏷️ Roles (Admin only)", value=(
+                "`!role create [name] [#color]`\n"
+                "`!role delete [name]`\n"
+                "`!role color [name] [#color]`\n"
+                "`!role give @user [name]`\n"
+                "`!role remove @user [name]`"
+            ), inline=False)
+            embed.add_field(name="🎲 Roll Admin", value="`!newroll` — Reset winning number", inline=False)
+            embed.add_field(name="🤖 AI Actions (Admin only)", value=(
+                "`!ai ban @user for spamming`\n"
+                "`!ai kick @user`\n"
+                "`!ai warn @user for being rude`\n"
+                "`!ai mute @user for 10 minutes`\n"
+                "`!ai create text channel called general`\n"
+                "`!ai create voice channel called Music`\n"
+                "`!ai create role called VIP in gold`\n"
+                "`!ai send announcement in #news saying Hello!`\n"
+                "`!ai set slowmode to 10 seconds in #general`\n"
+                "`!ai start a giveaway for Nitro 24 hours`\n"
+                "`!ai filter the words: bad, word2`\n"
+                "`!ai set up welcome messages in #welcome`"
+            ), inline=False)
+
+        embed.set_footer(text="Powered by Groq AI (Llama 3.1) ⚡")
+        return await ctx.send(embed=embed)
+
+    # Cooldown
     user_id = ctx.author.id
     now     = utcnow()
     last    = user_last_called.get(user_id)
     if last and (now - last).total_seconds() < COOLDOWN_SECONDS:
         remaining = int(COOLDOWN_SECONDS - (now - last).total_seconds())
-        await ctx.send(f"⏳ Please wait **{remaining}s** before using `!ai` again.")
-        return
+        return await ctx.send(f"⏳ Wait **{remaining}s** before using `!ai` again.")
     user_last_called[user_id] = now
 
     async with ctx.typing():
-        text_reply, action_obj = await process_message(
-            user_id, user_input, guild=ctx.guild, bot_latency=bot.latency
-        )
-        if text_reply:
-            await ctx.send(text_reply)
-        if action_obj and isinstance(action_obj, dict):
-            await execute_action(ctx.guild, action_obj, ctx.channel)
+        reply = await ask_groq(user_id, user_input)
+        await ctx.reply(reply)
+
+# ============================================================
+# MEMBER COMMANDS
+# ============================================================
+@bot.command(name="quiz")
+async def quiz_cmd(ctx):
+    ch_id = ctx.channel.id
+    if ch_id in quiz_active:
+        return await ctx.send("⚠️ A quiz is already active! Answer it first.")
+    q, a = random.choice(QUIZ_BANK)
+    quiz_active[ch_id] = {"question": q, "answer": a, "user_id": ctx.author.id}
+    embed = discord.Embed(title="🧠 Quiz Time!", description=f"**{q}**\n\nType your answer! You have **30 seconds**.", color=discord.Color.blurple())
+    embed.set_footer(text="10 points for correct answer!")
+    await ctx.send(embed=embed)
+    await asyncio.sleep(30)
+    if ch_id in quiz_active and quiz_active[ch_id]["question"] == q:
+        del quiz_active[ch_id]
+        await ctx.send(f"⏰ Time's up! The answer was **{a}**.")
+
+@bot.command(name="points")
+async def points_cmd(ctx, member: discord.Member = None):
+    target = member or ctx.author
+    pts = user_points.get(target.id, 0)
+    await ctx.send(f"🏆 **{target.display_name}** has **{pts} points**.")
+
+@bot.command(name="leaderboard", aliases=["lb"])
+async def leaderboard_cmd(ctx):
+    if not user_points:
+        return await ctx.send("No points recorded yet!")
+    sorted_users = sorted(user_points.items(), key=lambda x: x[1], reverse=True)[:10]
+    embed = discord.Embed(title="🏆 Leaderboard", color=discord.Color.gold())
+    desc = ""
+    medals = ["🥇", "🥈", "🥉"]
+    for i, (uid, pts) in enumerate(sorted_users):
+        m = ctx.guild.get_member(uid)
+        name = m.display_name if m else f"User {uid}"
+        medal = medals[i] if i < 3 else f"**#{i+1}**"
+        desc += f"{medal} {name} — **{pts} pts**\n"
+    embed.description = desc
+    await ctx.send(embed=embed)
+
+@bot.command(name="ping")
+async def ping_cmd(ctx):
+    await ctx.send(f"🏓 Pong! **{round(bot.latency * 1000)}ms**")
 
 @bot.command(name="reset")
-async def reset(ctx):
+async def reset_cmd(ctx):
     conversation_history.pop(ctx.author.id, None)
     await ctx.send("🔄 Chat history cleared!")
 
-@bot.command(name="ping")
-async def ping(ctx):
-    await ctx.send(f"🏓 Pong! **{round(bot.latency * 1000)}ms**")
-
+# ============================================================
+# ADMIN COMMANDS
+# ============================================================
 @bot.command(name="mute")
-@commands.has_permissions(moderate_members=True)
-async def mute(ctx, member: discord.Member, minutes: int = 10, *, reason: str = "No reason"):
+async def mute_cmd(ctx, member: discord.Member, minutes: int = 10, *, reason: str = "No reason"):
+    if not has_admin_role(ctx.author):
+        return await ctx.send("❌ You need **Owner** or **Management** role.")
     until = datetime.now(timezone.utc) + timedelta(minutes=minutes)
     await member.timeout(until, reason=reason)
     await ctx.send(f"🔇 **{member.display_name}** muted for **{minutes} min**. Reason: {reason}")
 
 @bot.command(name="unmute")
-@commands.has_permissions(moderate_members=True)
-async def unmute(ctx, member: discord.Member):
+async def unmute_cmd(ctx, member: discord.Member):
+    if not has_admin_role(ctx.author):
+        return await ctx.send("❌ You need **Owner** or **Management** role.")
     await member.timeout(None)
     await ctx.send(f"🔊 **{member.display_name}** unmuted.")
 
-@bot.command(name="giverole")
-@commands.has_permissions(manage_roles=True)
-async def giverole(ctx, member: discord.Member, *, role_name: str):
-    role = discord.utils.get(ctx.guild.roles, name=role_name)
-    if not role:
-        return await ctx.send(f"❌ Role **{role_name}** not found.")
-    await member.add_roles(role)
-    await ctx.send(f"✅ **@{role.name}** given to **{member.display_name}**.")
+@bot.command(name="ban")
+async def ban_cmd(ctx, member: discord.Member, *, reason: str = "No reason"):
+    if not has_admin_role(ctx.author):
+        return await ctx.send("❌ You need **Owner** or **Management** role.")
+    await member.ban(reason=reason)
+    await ctx.send(f"🔨 **{member.display_name}** banned. Reason: {reason}")
 
-@bot.command(name="removerole")
-@commands.has_permissions(manage_roles=True)
-async def removerole(ctx, member: discord.Member, *, role_name: str):
-    role = discord.utils.get(ctx.guild.roles, name=role_name)
-    if not role:
-        return await ctx.send(f"❌ Role **{role_name}** not found.")
-    await member.remove_roles(role)
-    await ctx.send(f"✅ **@{role.name}** removed from **{member.display_name}**.")
+@bot.command(name="unban")
+async def unban_cmd(ctx, *, username: str):
+    if not has_admin_role(ctx.author):
+        return await ctx.send("❌ You need **Owner** or **Management** role.")
+    banned = [entry async for entry in ctx.guild.bans()]
+    for entry in banned:
+        if str(entry.user) == username or entry.user.name == username:
+            await ctx.guild.unban(entry.user)
+            return await ctx.send(f"✅ **{entry.user}** unbanned.")
+    await ctx.send(f"❌ No banned user found: **{username}**.")
+
+@bot.command(name="kick")
+async def kick_cmd(ctx, member: discord.Member, *, reason: str = "No reason"):
+    if not has_admin_role(ctx.author):
+        return await ctx.send("❌ You need **Owner** or **Management** role.")
+    await member.kick(reason=reason)
+    await ctx.send(f"👢 **{member.display_name}** kicked. Reason: {reason}")
+
+@bot.command(name="warn")
+async def warn_cmd(ctx, member: discord.Member, *, reason: str = "No reason"):
+    if not has_admin_role(ctx.author):
+        return await ctx.send("❌ You need **Owner** or **Management** role.")
+    warn_records.setdefault(ctx.guild.id, {}).setdefault(str(member.id), []).append(reason)
+    count = len(warn_records[ctx.guild.id][str(member.id)])
+    embed = discord.Embed(title="⚠️ Warning", description=f"**Server:** {ctx.guild.name}\n**Reason:** {reason}\n**Total warnings:** {count}", color=discord.Color.yellow())
+    try:
+        await member.send(embed=embed)
+    except Exception:
+        pass
+    await ctx.send(f"⚠️ **{member.display_name}** warned ({count} total). Reason: {reason}")
+
+@bot.command(name="warnings")
+async def warnings_cmd(ctx, member: discord.Member):
+    if not has_admin_role(ctx.author):
+        return await ctx.send("❌ You need **Owner** or **Management** role.")
+    warns = warn_records.get(ctx.guild.id, {}).get(str(member.id), [])
+    if not warns:
+        return await ctx.send(f"✅ **{member.display_name}** has no warnings.")
+    desc = "\n".join([f"{i+1}. {w}" for i, w in enumerate(warns)])
+    embed = discord.Embed(title=f"⚠️ Warnings for {member.display_name}", description=desc, color=discord.Color.orange())
+    await ctx.send(embed=embed)
 
 @bot.command(name="clear")
-@commands.has_permissions(manage_messages=True)
-async def clear(ctx, amount: int = 10):
+async def clear_cmd(ctx, amount: int = 10):
+    if not has_admin_role(ctx.author):
+        return await ctx.send("❌ You need **Owner** or **Management** role.")
     await ctx.channel.purge(limit=amount + 1)
     msg = await ctx.send(f"🧹 Cleared **{amount}** messages.")
     await asyncio.sleep(3)
     await msg.delete()
 
-@bot.command(name="commands")
-async def show_commands(ctx):
-    embed = discord.Embed(
-        title="🤖 AI Server Manager",
-        description=(
-            "Just tell me what you want in plain English using `!ai`.\n"
-            "No commands to memorise — the AI understands you."
-        ),
-        color=discord.Color.blurple()
-    )
-    embed.add_field(name="🛡️ Moderation (direct)", value=(
-        "`!mute @user [minutes] [reason]`\n"
-        "`!unmute @user`\n"
-        "`!giverole @user RoleName`\n"
-        "`!removerole @user RoleName`\n"
-        "`!clear [amount]`"
-    ), inline=False)
-    embed.add_field(name="🤖 AI Moderation", value=(
-        "`!ai ban @user for spamming`\n"
-        "`!ai kick @user`\n"
-        "`!ai warn @user for being rude`\n"
-        "`!ai change @user's nickname to CoolName`"
-    ), inline=False)
-    embed.add_field(name="📢 Channels", value=(
-        "`!ai create text channel called general`\n"
-        "`!ai create voice channel called Music`\n"
-        "`!ai create announcement channel called news`\n"
-        "`!ai create forum channel called help`\n"
-        "`!ai rename channel old-name to new-name`\n"
-        "`!ai delete channel called old-chat`"
-    ), inline=False)
-    embed.add_field(name="🏷️ Roles", value=(
-        "`!ai create role called VIP in gold`\n"
-        "`!ai delete role called Member`\n"
-        "`!ai give @user the VIP role`\n"
-        "`!ai set auto role to Member`"
-    ), inline=False)
-    embed.add_field(name="👋 Welcome & Farewell", value=(
-        "`!ai set up welcome messages in #welcome`\n"
-        "`!ai set up farewell message in #general`"
-    ), inline=False)
-    embed.add_field(name="🗑️ Message Purge", value=(
-        "`!ai delete all messages from @user`\n"
-        "`!ai remove @user image only`\n"
-        "`!ai purge @user links`\n"
-        "`!ai clear @user text messages`"
-    ), inline=False)
-    embed.add_field(name="🚫 Word Filter", value=(
-        "`!ai filter the words: bad, word2`\n"
-        "`!ai remove badword from the filter`"
-    ), inline=False)
-    embed.add_field(name="🔧 Utility", value=(
-        "`!ai send announcement in #news saying Hello everyone!`\n"
-        "`!ai set slowmode to 10 seconds in #general`\n"
-        "`!ai start a giveaway for Nitro in #giveaway for 24 hours`\n"
-        "`!clear 20` — delete messages\n"
-        "`!reset` — clear your chat history\n"
-        "`!ping` — bot latency"
-    ), inline=False)
-    embed.set_footer(text="Powered by Groq AI (Llama 3.1) ⚡")
-    await ctx.send(embed=embed)
+@bot.command(name="role")
+async def role_cmd(ctx, action: str, *, args: str = ""):
+    if not has_admin_role(ctx.author):
+        return await ctx.send("❌ You need **Owner** or **Management** role.")
+    action = action.lower()
+
+    if action == "create":
+        parts = args.split()
+        color_hex = "5865F2"
+        name = args
+        for part in parts:
+            clean = part.replace("#", "")
+            if len(clean) == 6 and all(c in "0123456789abcdefABCDEF" for c in clean):
+                color_hex = clean
+                name = args.replace(part, "").strip()
+                break
+        role = await ctx.guild.create_role(name=name, color=discord.Color(int(color_hex, 16)))
+        await ctx.send(f"✅ Role **@{role.name}** created!")
+
+    elif action == "delete":
+        role = discord.utils.get(ctx.guild.roles, name=args.strip())
+        if not role:
+            return await ctx.send(f"❌ Role **{args}** not found.")
+        await role.delete()
+        await ctx.send(f"🗑️ Role **@{args}** deleted.")
+
+    elif action == "color":
+        parts = args.split()
+        if len(parts) < 2:
+            return await ctx.send("Usage: `!role color [role name] [#color]`")
+        color_hex = parts[-1].replace("#", "")
+        role_name = " ".join(parts[:-1])
+        role = discord.utils.get(ctx.guild.roles, name=role_name)
+        if not role:
+            return await ctx.send(f"❌ Role **{role_name}** not found.")
+        await role.edit(color=discord.Color(int(color_hex, 16)))
+        await ctx.send(f"🎨 Role **@{role.name}** color updated!")
+
+    elif action == "give":
+        if not ctx.message.mentions:
+            return await ctx.send("Usage: `!role give @user RoleName`")
+        member = ctx.message.mentions[0]
+        role_name = re.sub(r"<@!?\d+>", "", args).strip()
+        role = discord.utils.get(ctx.guild.roles, name=role_name)
+        if not role:
+            return await ctx.send(f"❌ Role **{role_name}** not found.")
+        await member.add_roles(role)
+        await ctx.send(f"✅ **@{role.name}** given to **{member.display_name}**.")
+
+    elif action == "remove":
+        if not ctx.message.mentions:
+            return await ctx.send("Usage: `!role remove @user RoleName`")
+        member = ctx.message.mentions[0]
+        role_name = re.sub(r"<@!?\d+>", "", args).strip()
+        role = discord.utils.get(ctx.guild.roles, name=role_name)
+        if not role:
+            return await ctx.send(f"❌ Role **{role_name}** not found.")
+        await member.remove_roles(role)
+        await ctx.send(f"✅ **@{role.name}** removed from **{member.display_name}**.")
+
+    else:
+        await ctx.send("❌ Usage: `!role create/delete/color/give/remove`")
+
+@bot.command(name="newroll")
+async def newroll_cmd(ctx):
+    global roll_winning_number
+    if not has_admin_role(ctx.author):
+        return await ctx.send("❌ You need **Owner** or **Management** role.")
+    roll_winning_number = random.randint(ROLL_MIN, ROLL_MAX)
+    await ctx.send(f"🎲 New winning number set! Let the guessing begin ({ROLL_MIN}–{ROLL_MAX}).")
+    print(f"New winning number: {roll_winning_number}")
 
 # ============================================================
 # RUN
