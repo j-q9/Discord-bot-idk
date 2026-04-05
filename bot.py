@@ -280,7 +280,7 @@ async def on_message(message):
         if re.match(r"^\d+$", content):
             number = int(content)
             if ROLL_MIN <= number <= ROLL_MAX:
-                if random.random() < 0.10:
+                if random.random() < 0.05:
                     embed = discord.Embed(
                         title="🎉 WINNER!",
                         description=(
