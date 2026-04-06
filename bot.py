@@ -40,6 +40,7 @@ COOLDOWN_SECONDS = 5
 ADMIN_ROLES      = ["Owner", "Management"]
 ROLL_CHANNEL     = "roll-for-robux"
 ROLL_CHANNEL_ID  = 1490276530452955246
+NO_QUIZ_CHANNELS = {1481972997039587449}
 ROLL_MIN         = 1
 ROLL_MAX         = 350
 
@@ -834,6 +835,8 @@ async def ai_cmd(ctx, *, user_input: str):
 @bot.command(name="quiz")
 async def quiz_cmd(ctx):
     ch_id = ctx.channel.id
+    if ch_id in NO_QUIZ_CHANNELS:
+        return await ctx.send("❌ Quiz commands are not allowed in this channel.")
     if ch_id in quiz_active:
         return await ctx.send("⚠️ A quiz is already active! Answer it first.")
     q, a = random.choice(QUIZ_BANK)
@@ -849,6 +852,8 @@ async def quiz_cmd(ctx):
 @bot.command(name="vquiz")
 async def vquiz_cmd(ctx):
     ch_id = ctx.channel.id
+    if ch_id in NO_QUIZ_CHANNELS:
+        return await ctx.send("❌ Quiz commands are not allowed in this channel.")
     if ch_id in vquiz_active:
         return await ctx.send("⚠️ A visual quiz is already active in this channel! Answer it first.")
     if ch_id in quiz_active:
