@@ -52,7 +52,7 @@ intents.message_content = True
 intents.members = True
 intents.guilds  = True
 
-bot = commands.Bot(command_prefix=PREFIX, intents=intents)
+bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None)
 
 # ============================================================
 # STATE
@@ -77,112 +77,135 @@ roll_win_index       = 0
 # QUIZ BANK
 # ============================================================
 QUIZ_BANK = [
-    ("What is the capital of France?", "paris"),
+    # Science & Nature
     ("What is 7 x 8?", "56"),
     ("What planet is known as the Red Planet?", "mars"),
-    ("How many sides does a hexagon have?", "6"),
-    ("What is the largest ocean on Earth?", "pacific"),
-    ("Who wrote Romeo and Juliet?", "shakespeare"),
     ("What is the chemical symbol for water?", "h2o"),
     ("How many continents are there?", "7"),
     ("What is the fastest land animal?", "cheetah"),
     ("What is the square root of 144?", "12"),
-    ("What country has the largest population?", "india"),
     ("How many days are in a leap year?", "366"),
     ("What gas do plants absorb?", "carbon dioxide"),
     ("What is the hardest natural substance?", "diamond"),
     ("How many bones are in the human body?", "206"),
     ("What is the longest river in the world?", "nile"),
-    ("What is the capital of Japan?", "tokyo"),
     ("How many players are on a football team?", "11"),
     ("What is the boiling point of water in Celsius?", "100"),
-    ("What is the capital of Germany?", "berlin"),
-    ("How many seconds are in a minute?", "60"),
     ("What is the largest planet?", "jupiter"),
-    ("Who invented the telephone?", "bell"),
     ("What is the smallest country?", "vatican"),
     ("How many letters in the English alphabet?", "26"),
-    ("What is the currency of Japan?", "yen"),
-    ("What is the capital of Australia?", "canberra"),
-    ("How many hours in a day?", "24"),
-    ("What language is spoken in Brazil?", "portuguese"),
-    ("What is the capital of Canada?", "ottawa"),
-    ("Who painted the Mona Lisa?", "da vinci"),
-    ("What is the tallest mountain?", "everest"),
-    ("How many planets in our solar system?", "8"),
-    ("What is the capital of Italy?", "rome"),
     ("What is the largest continent?", "asia"),
     ("How many colors are in a rainbow?", "7"),
-    ("What is the capital of Spain?", "madrid"),
-    ("Who was the first US president?", "washington"),
-    ("What is the capital of China?", "beijing"),
     ("What is the largest desert?", "sahara"),
     ("How many teeth does an adult have?", "32"),
-    ("What is the capital of Russia?", "moscow"),
-    ("What animal is the king of the jungle?", "lion"),
     ("How many strings does a guitar have?", "6"),
-    ("What is the capital of Brazil?", "brasilia"),
     ("What is the nearest star to Earth?", "sun"),
-    ("What is the capital of India?", "new delhi"),
-    ("How many wheels does a tricycle have?", "3"),
     ("What is the largest organ in the body?", "skin"),
-    ("What is the capital of Mexico?", "mexico city"),
-    ("Who discovered gravity?", "newton"),
-    ("How many days in a week?", "7"),
-    ("What is the capital of South Korea?", "seoul"),
-    ("What is the most spoken language?", "mandarin"),
     ("How many chambers does the heart have?", "4"),
-    ("What is the capital of Egypt?", "cairo"),
     ("What is the chemical symbol for gold?", "au"),
     ("How many months have 31 days?", "7"),
-    ("What is the capital of Turkey?", "ankara"),
-    ("Who invented the light bulb?", "edison"),
-    ("What is the capital of Argentina?", "buenos aires"),
     ("What is the largest mammal?", "blue whale"),
     ("How many sides does a triangle have?", "3"),
     ("What is the chemical symbol for iron?", "fe"),
     ("How many years in a decade?", "10"),
     ("What is the tallest animal?", "giraffe"),
-    ("How many cents in a dollar?", "100"),
     ("What gas do humans breathe?", "oxygen"),
-    ("How many sides does a pentagon have?", "5"),
     ("What is the largest bird?", "ostrich"),
     ("How many years in a century?", "100"),
-    ("Who wrote Harry Potter?", "rowling"),
-    ("How many hours in a week?", "168"),
     ("What is the smallest planet?", "mercury"),
-    ("How many degrees in a right angle?", "90"),
-    ("What is the capital of Bangladesh?", "dhaka"),
     ("Most common gas in atmosphere?", "nitrogen"),
-    ("How many sides does an octagon have?", "8"),
     ("What is the largest country by area?", "russia"),
     ("How many cards in a standard deck?", "52"),
-    ("What is the symbol for pi?", "3.14"),
     ("How many legs does a spider have?", "8"),
     ("What is the hottest planet?", "venus"),
     ("How many minutes in a day?", "1440"),
-    ("What year did WW2 end?", "1945"),
-    ("How many players in basketball?", "5"),
-    ("What is the capital of Greece?", "athens"),
     ("How many keys on a piano?", "88"),
-    ("What is the capital of Portugal?", "lisbon"),
     ("How many bytes in a kilobyte?", "1024"),
-    ("What is the capital of Netherlands?", "amsterdam"),
     ("How many sides does a cube have?", "6"),
-    ("What is the capital of Sweden?", "stockholm"),
     ("How many players in volleyball?", "6"),
-    ("What is the capital of Denmark?", "copenhagen"),
-    ("What is the capital of Norway?", "oslo"),
     ("What is the atomic number of carbon?", "6"),
-    ("What is the capital of Pakistan?", "islamabad"),
-    ("What is the capital of Philippines?", "manila"),
+    ("What is the square root of 256?", "16"),
+    ("How many moons does Mars have?", "2"),
+    ("What is the only planet that rotates on its side?", "uranus"),
+    ("What is the only mammal that can truly fly?", "bat"),
+    ("What is the longest bone in the body?", "femur"),
+    ("How many hearts does an octopus have?", "3"),
+    ("What is the most abundant metal in Earth's crust?", "aluminium"),
+    ("How many zeros are in a trillion?", "12"),
+    ("What is the only country with a non-rectangular flag?", "nepal"),
+    ("What is the rarest blood type?", "ab negative"),
+    ("How many zeros are in a googol?", "100"),
+    ("What is the closest planet to the sun?", "mercury"),
+    # History & People
+    ("Who wrote Romeo and Juliet?", "shakespeare"),
+    ("Who painted the Mona Lisa?", "da vinci"),
+    ("What is the tallest mountain?", "everest"),
+    ("How many planets in our solar system?", "8"),
+    ("Who was the first US president?", "washington"),
+    ("Who discovered gravity?", "newton"),
+    ("What is the most spoken language?", "mandarin"),
+    ("Who invented the light bulb?", "edison"),
+    ("Who invented the telephone?", "bell"),
+    ("What year did WW2 end?", "1945"),
     ("What year did WW1 start?", "1914"),
+    ("How many players in basketball?", "5"),
+    ("Who wrote Harry Potter?", "rowling"),
+    ("How many hours in a week?", "168"),
+    ("What country has the largest population?", "india"),
+    ("Who invented the airplane?", "wright brothers"),
+    ("Who invented the internet?", "tim berners-lee"),
+    ("What was the first country to give women the right to vote?", "new zealand"),
+    ("How old was Alexander the Great when he died?", "32"),
+    ("What year was the Titanic built?", "1909"),
+    ("Who was the first person to walk on the moon?", "neil armstrong"),
+    # Brain Teasers & Fun
+    ("What has hands but can't clap?", "clock"),
+    ("What has keys but no locks?", "piano"),
+    ("What comes once in a minute, twice in a moment, never in a thousand years?", "m"),
+    ("What gets wetter the more it dries?", "towel"),
+    ("What is 15% of 300?", "45"),
+    ("How many sides does an octagon have?", "8"),
+    ("What is the symbol for pi?", "3.14"),
+    ("How many seconds are in a minute?", "60"),
+    ("How many hours in a day?", "24"),
+    ("How many days in a week?", "7"),
+    ("How many cents in a dollar?", "100"),
+    ("How many sides does a pentagon have?", "5"),
+    ("How many degrees in a right angle?", "90"),
+    ("What is the currency of Japan?", "yen"),
+    ("What language is spoken in Brazil?", "portuguese"),
+    ("What is the largest ocean on Earth?", "pacific"),
 ]
 
 # ============================================================
 # VISUAL QUIZ BANK  (question, image_url, accepted_answers)
 # ============================================================
 VISUAL_QUIZ_BANK = [
+    # --- Famous Paintings ---
+    ("🎨 What is the name of this famous painting?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ec/Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg/480px-Mona_Lisa%2C_by_Leonardo_da_Vinci%2C_from_C2RMF_retouched.jpg",
+     ["mona lisa"]),
+
+    ("🎨 What is the name of this famous painting?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ea/Van_Gogh_-_Starry_Night_-_Google_Art_Project.jpg/640px-Van_Gogh_-_Starry_Night_-_Google_Art_Project.jpg",
+     ["starry night", "the starry night"]),
+
+    ("🎨 What is the name of this famous painting?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f4/The_Scream.jpg/471px-The_Scream.jpg",
+     ["the scream", "scream"]),
+
+    ("🎨 What is the name of this famous painting?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0b/Sandro_Botticelli_-_La_nascita_di_Venere_-_Google_Art_Project_-_edited.jpg/640px-Sandro_Botticelli_-_La_nascita_di_Venere_-_Google_Art_Project_-_edited.jpg",
+     ["birth of venus", "the birth of venus"]),
+
+    ("🎨 What is the name of this famous painting?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/%22The_Last_Supper%22_by_Leonardo_da_Vinci.jpg/640px-%22The_Last_Supper%22_by_Leonardo_da_Vinci.jpg",
+     ["the last supper", "last supper"]),
+
+    ("🎨 What is the name of this famous painting?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/e/ed/Girl_with_a_Pearl_Earring.jpg/480px-Girl_with_a_Pearl_Earring.jpg",
+     ["girl with a pearl earring"]),
+
     # --- Landmarks ---
     ("🏛️ What famous landmark is this?",
      "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Tour_Eiffel_Wikimedia_Commons.jpg/600px-Tour_Eiffel_Wikimedia_Commons.jpg",
@@ -250,10 +273,6 @@ VISUAL_QUIZ_BANK = [
      ["panda", "giant panda"]),
 
     ("🐾 What animal is this?",
-     "https://upload.wikimedia.org/wikipedia/commons/thumb/4/45/A_small_cup_of_coffee.JPG/640px-A_small_cup_of_coffee.JPG",
-     ["coffee"]),
-
-    ("🐾 What animal is this?",
      "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Felis_silvestris_silvestris_small_gradual_decrease.png/640px-Felis_silvestris_silvestris_small_gradual_decrease.png",
      ["cat", "wildcat"]),
 
@@ -262,57 +281,29 @@ VISUAL_QUIZ_BANK = [
      ["dog", "labrador", "labrador retriever"]),
 
     ("🐾 What animal is this?",
-     "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/640px-Cat03.jpg",
-     ["cat"]),
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/2/22/South_African_Penguin_%28Spheniscus_demersus%29.jpg/640px-South_African_Penguin_%28Spheniscus_demersus%29.jpg",
+     ["penguin"]),
 
-    # --- Flags ---
-    ("🏳️ What country's flag is this?",
-     "https://upload.wikimedia.org/wikipedia/en/thumb/9/9e/Flag_of_Japan.svg/640px-Flag_of_Japan.svg.png",
-     ["japan"]),
+    # --- Space & Science ---
+    ("🚀 What planet is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e7/Jupiter_New_Horizons.jpg/600px-Jupiter_New_Horizons.jpg",
+     ["jupiter"]),
 
-    ("🏳️ What country's flag is this?",
-     "https://upload.wikimedia.org/wikipedia/en/thumb/c/c3/Flag_of_France.svg/640px-Flag_of_France.svg.png",
-     ["france"]),
+    ("🚀 What planet is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c7/Saturn_during_Equinox.jpg/600px-Saturn_during_Equinox.jpg",
+     ["saturn"]),
 
-    ("🏳️ What country's flag is this?",
-     "https://upload.wikimedia.org/wikipedia/en/thumb/a/a4/Flag_of_the_United_States.svg/640px-Flag_of_the_United_States.svg.png",
-     ["united states", "usa", "america", "us"]),
+    ("🚀 What planet is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/Mars_atmosphere.jpg/600px-Mars_atmosphere.jpg",
+     ["mars"]),
 
-    ("🏳️ What country's flag is this?",
-     "https://upload.wikimedia.org/wikipedia/en/thumb/a/ae/Flag_of_the_United_Kingdom.svg/640px-Flag_of_the_United_Kingdom.svg.png",
-     ["united kingdom", "uk", "britain", "great britain"]),
+    ("🔭 What is this famous space object?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/Hs-2004-07-a-large_web.jpg/640px-Hs-2004-07-a-large_web.jpg",
+     ["crab nebula", "nebula"]),
 
-    ("🏳️ What country's flag is this?",
-     "https://upload.wikimedia.org/wikipedia/en/thumb/c/cf/Flag_of_Canada.svg/640px-Flag_of_Canada.svg.png",
-     ["canada"]),
-
-    ("🏳️ What country's flag is this?",
-     "https://upload.wikimedia.org/wikipedia/en/thumb/0/05/Flag_of_Brazil.svg/640px-Flag_of_Brazil.svg.png",
-     ["brazil"]),
-
-    ("🏳️ What country's flag is this?",
-     "https://upload.wikimedia.org/wikipedia/en/thumb/b/ba/Flag_of_Germany.svg/640px-Flag_of_Germany.svg.png",
-     ["germany"]),
-
-    ("🏳️ What country's flag is this?",
-     "https://upload.wikimedia.org/wikipedia/en/thumb/b/b9/Flag_of_Australia.svg/640px-Flag_of_Australia.svg.png",
-     ["australia"]),
-
-    ("🏳️ What country's flag is this?",
-     "https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Flag_of_Pakistan.svg/640px-Flag_of_Pakistan.svg.png",
-     ["pakistan"]),
-
-    ("🏳️ What country's flag is this?",
-     "https://upload.wikimedia.org/wikipedia/en/thumb/4/41/Flag_of_India.svg/640px-Flag_of_India.svg.png",
-     ["india"]),
-
-    ("🏳️ What country's flag is this?",
-     "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/Flag_of_Saudi_Arabia.svg/640px-Flag_of_Saudi_Arabia.svg.png",
-     ["saudi arabia"]),
-
-    ("🏳️ What country's flag is this?",
-     "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Flag_of_Thailand.svg/640px-Flag_of_Thailand.svg.png",
-     ["thailand"]),
+    ("🔭 What famous structure is shown here?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/HST-SM4.jpeg/600px-HST-SM4.jpeg",
+     ["hubble", "hubble telescope", "hubble space telescope"]),
 
     # --- Famous People ---
     ("🧑 Who is this person?",
@@ -399,18 +390,25 @@ def get_server_snapshot(guild):
     )
 
 def extract_json_action(text):
-    match = re.search(r'```json\s*(\{.*?\})\s*```', text, re.DOTALL)
-    if match:
-        try:
-            return json.loads(match.group(1))
-        except Exception:
-            pass
-    match2 = re.search(r'\{[^{}]*"action"[^{}]*\}', text, re.DOTALL)
-    if match2:
-        try:
-            return json.loads(match2.group(0))
-        except Exception:
-            pass
+    # Walk the string finding balanced JSON objects that contain "action"
+    for i, ch in enumerate(text):
+        if ch != '{':
+            continue
+        depth = 0
+        for j in range(i, len(text)):
+            if text[j] == '{':
+                depth += 1
+            elif text[j] == '}':
+                depth -= 1
+                if depth == 0:
+                    candidate = text[i:j + 1]
+                    try:
+                        obj = json.loads(candidate)
+                        if isinstance(obj, dict) and "action" in obj:
+                            return obj
+                    except Exception:
+                        pass
+                    break
     return None
 
 def clean_ai_reply(text):
@@ -828,6 +826,79 @@ async def ai_cmd(ctx, *, user_input: str):
         else:
             reply = await ask_groq(user_id, user_input)
             await ctx.reply(reply)
+
+# ============================================================
+# HELP COMMAND
+# ============================================================
+@bot.command(name="help", aliases=["commands", "cmds"])
+async def help_cmd(ctx):
+    is_admin = has_admin_role(ctx.author)
+    embed = discord.Embed(
+        title="📋 Bot Commands",
+        description="Here's everything you can do!\nUse `!ai [anything]` to chat with AI or trigger server actions (admins).",
+        color=discord.Color.blurple()
+    )
+    embed.add_field(
+        name="🤖 AI Chat",
+        value="`!ai <message>` — Chat with AI or give it instructions\n`!a <message>` — Shortcut for `!ai`\n`!reset` — Clear your AI conversation history",
+        inline=False
+    )
+    embed.add_field(
+        name="🧠 Quiz & Points",
+        value="`!quiz` — Text quiz (10 pts for correct answer)\n`!vquiz` — Visual image quiz (15 pts)\n`!points [@user]` — Check your/someone's points\n`!leaderboard` — Top 10 players",
+        inline=False
+    )
+    embed.add_field(
+        name="🎲 Roll for Robux",
+        value=f"Type any number **{ROLL_MIN}–{ROLL_MAX}** in the roll channel!\nBot rolls too — match it to win **Robux**! (Very rare 🍀)",
+        inline=False
+    )
+    embed.add_field(
+        name="🔧 Utility",
+        value="`!ping` — Bot latency",
+        inline=False
+    )
+    if is_admin:
+        embed.add_field(
+            name="🛡️ Moderation",
+            value=(
+                "`!mute @user [mins] [reason]` — Timeout a user\n"
+                "`!unmute @user` — Remove timeout\n"
+                "`!ban @user [reason]` — Ban a user\n"
+                "`!unban <username>` — Unban a user\n"
+                "`!kick @user [reason]` — Kick a user\n"
+                "`!warn @user [reason]` — Warn a user\n"
+                "`!warnings @user` — View warnings\n"
+                "`!clear [amount]` — Delete messages"
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="🏷️ Role Management",
+            value=(
+                "`!role create <name> [#color]`\n"
+                "`!role delete <name>`\n"
+                "`!role color <name> <#color>`\n"
+                "`!role give @user <name>`\n"
+                "`!role remove @user <name>`"
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="🤖 AI Server Actions (say naturally)",
+            value=(
+                "`!ai ban/kick/mute/warn @user [reason]`\n"
+                "`!ai create a text/voice channel called ...`\n"
+                "`!ai create a role called ... in [color]`\n"
+                "`!ai send announcement in #channel saying ...`\n"
+                "`!ai set slowmode to X seconds in #channel`\n"
+                "`!ai start a giveaway for [prize] in #channel`\n"
+                "`!ai set up welcome messages in #channel`"
+            ),
+            inline=False
+        )
+    embed.set_footer(text="Powered by Groq AI (Llama 3.1) ⚡ | Admins see extra commands")
+    await ctx.send(embed=embed)
 
 # ============================================================
 # MEMBER COMMANDS
