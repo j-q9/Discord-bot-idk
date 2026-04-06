@@ -758,7 +758,7 @@ async def ai_cmd(ctx, *, user_input: str):
     lower = user_input.lower().strip()
 
     # !ai commands — shows full embed, but admin section only visible to admins
-    if lower in ("commands", "cmds", "help"):
+    if lower in ("commands", "cmds", "help", "cmd", "command"):
         embed = discord.Embed(
             title="🤖 AI Server Manager",
             description="Just tell me what you want in plain English using `!ai`.\nNo commands to memorise — the AI understands you.",
@@ -830,7 +830,7 @@ async def ai_cmd(ctx, *, user_input: str):
 # ============================================================
 # HELP COMMAND
 # ============================================================
-@bot.command(name="help", aliases=["commands", "cmds"])
+@bot.command(name="help", aliases=["commands", "cmds", "cmd", "command"])
 async def help_cmd(ctx):
     is_admin = has_admin_role(ctx.author)
     embed = discord.Embed(
