@@ -60,6 +60,7 @@ user_last_called     = {}
 conversation_history = {}
 user_points          = {}
 quiz_active          = {}
+vquiz_active         = {}
 word_filter          = {}
 auto_role_config     = {}
 welcome_config       = {}
@@ -175,6 +176,155 @@ QUIZ_BANK = [
     ("What is the capital of Pakistan?", "islamabad"),
     ("What is the capital of Philippines?", "manila"),
     ("What year did WW1 start?", "1914"),
+]
+
+# ============================================================
+# VISUAL QUIZ BANK  (question, image_url, accepted_answers)
+# ============================================================
+VISUAL_QUIZ_BANK = [
+    # --- Landmarks ---
+    ("🏛️ What famous landmark is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Tour_Eiffel_Wikimedia_Commons.jpg/600px-Tour_Eiffel_Wikimedia_Commons.jpg",
+     ["eiffel tower", "the eiffel tower"]),
+
+    ("🏛️ What famous landmark is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/d/de/Colosseo_2020.jpg/640px-Colosseo_2020.jpg",
+     ["colosseum", "coliseum", "the colosseum"]),
+
+    ("🏛️ What famous landmark is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/Taj_Mahal_%28Edited%29.jpeg/640px-Taj_Mahal_%28Edited%29.jpeg",
+     ["taj mahal"]),
+
+    ("🏛️ What famous landmark is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/Statue_of_Liberty_7.jpg/480px-Statue_of_Liberty_7.jpg",
+     ["statue of liberty"]),
+
+    ("🏛️ What famous landmark is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/2/23/The_Great_Wall_of_China_at_Jinshanling-edit.jpg/640px-The_Great_Wall_of_China_at_Jinshanling-edit.jpg",
+     ["great wall", "great wall of china"]),
+
+    ("🏛️ What famous landmark is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/Burj_Khalifa_-_Jan_2006.jpg/400px-Burj_Khalifa_-_Jan_2006.jpg",
+     ["burj khalifa"]),
+
+    ("🏛️ What famous landmark is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e3/Machu_Picchu%2C_Peru.jpg/640px-Machu_Picchu%2C_Peru.jpg",
+     ["machu picchu"]),
+
+    ("🏛️ What famous landmark is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/New_seven_wonders_Petra.jpg/640px-New_seven_wonders_Petra.jpg",
+     ["petra"]),
+
+    ("🏛️ What famous landmark is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/1/10/Empire_State_Building_%28aerial_view%29.jpg/400px-Empire_State_Building_%28aerial_view%29.jpg",
+     ["empire state building"]),
+
+    ("🏛️ What famous landmark is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1e/Kaabaiqbal1986.jpg/480px-Kaabaiqbal1986.jpg",
+     ["kaaba", "mecca", "masjid al-haram"]),
+
+    ("🏛️ What famous landmark is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3e/Sydney_Opera_House_Sails.jpg/640px-Sydney_Opera_House_Sails.jpg",
+     ["sydney opera house"]),
+
+    ("🏛️ What famous landmark is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/Clock_Tower_-_Palace_of_Westminster%2C_London_-_May_2007.jpg/400px-Clock_Tower_-_Palace_of_Westminster%2C_London_-_May_2007.jpg",
+     ["big ben", "elizabeth tower"]),
+
+    # --- Animals ---
+    ("🐾 What animal is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/7/73/Lion_waiting_in_Namibia.jpg/640px-Lion_waiting_in_Namibia.jpg",
+     ["lion"]),
+
+    ("🐾 What animal is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/3/37/African_Bush_Elephant.jpg/640px-African_Bush_Elephant.jpg",
+     ["elephant", "african elephant"]),
+
+    ("🐾 What animal is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/9/9e/Giraffe_Mikumi_National_Park.jpg/480px-Giraffe_Mikumi_National_Park.jpg",
+     ["giraffe"]),
+
+    ("🐾 What animal is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0f/Grosser_Panda.JPG/640px-Grosser_Panda.JPG",
+     ["panda", "giant panda"]),
+
+    ("🐾 What animal is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/4/45/A_small_cup_of_coffee.JPG/640px-A_small_cup_of_coffee.JPG",
+     ["coffee"]),
+
+    ("🐾 What animal is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e9/Felis_silvestris_silvestris_small_gradual_decrease.png/640px-Felis_silvestris_silvestris_small_gradual_decrease.png",
+     ["cat", "wildcat"]),
+
+    ("🐾 What animal is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/2/26/YellowLabradorLooking_new.jpg/640px-YellowLabradorLooking_new.jpg",
+     ["dog", "labrador", "labrador retriever"]),
+
+    ("🐾 What animal is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/640px-Cat03.jpg",
+     ["cat"]),
+
+    # --- Flags ---
+    ("🏳️ What country's flag is this?",
+     "https://upload.wikimedia.org/wikipedia/en/thumb/9/9e/Flag_of_Japan.svg/640px-Flag_of_Japan.svg.png",
+     ["japan"]),
+
+    ("🏳️ What country's flag is this?",
+     "https://upload.wikimedia.org/wikipedia/en/thumb/c/c3/Flag_of_France.svg/640px-Flag_of_France.svg.png",
+     ["france"]),
+
+    ("🏳️ What country's flag is this?",
+     "https://upload.wikimedia.org/wikipedia/en/thumb/a/a4/Flag_of_the_United_States.svg/640px-Flag_of_the_United_States.svg.png",
+     ["united states", "usa", "america", "us"]),
+
+    ("🏳️ What country's flag is this?",
+     "https://upload.wikimedia.org/wikipedia/en/thumb/a/ae/Flag_of_the_United_Kingdom.svg/640px-Flag_of_the_United_Kingdom.svg.png",
+     ["united kingdom", "uk", "britain", "great britain"]),
+
+    ("🏳️ What country's flag is this?",
+     "https://upload.wikimedia.org/wikipedia/en/thumb/c/cf/Flag_of_Canada.svg/640px-Flag_of_Canada.svg.png",
+     ["canada"]),
+
+    ("🏳️ What country's flag is this?",
+     "https://upload.wikimedia.org/wikipedia/en/thumb/0/05/Flag_of_Brazil.svg/640px-Flag_of_Brazil.svg.png",
+     ["brazil"]),
+
+    ("🏳️ What country's flag is this?",
+     "https://upload.wikimedia.org/wikipedia/en/thumb/b/ba/Flag_of_Germany.svg/640px-Flag_of_Germany.svg.png",
+     ["germany"]),
+
+    ("🏳️ What country's flag is this?",
+     "https://upload.wikimedia.org/wikipedia/en/thumb/b/b9/Flag_of_Australia.svg/640px-Flag_of_Australia.svg.png",
+     ["australia"]),
+
+    ("🏳️ What country's flag is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Flag_of_Pakistan.svg/640px-Flag_of_Pakistan.svg.png",
+     ["pakistan"]),
+
+    ("🏳️ What country's flag is this?",
+     "https://upload.wikimedia.org/wikipedia/en/thumb/4/41/Flag_of_India.svg/640px-Flag_of_India.svg.png",
+     ["india"]),
+
+    ("🏳️ What country's flag is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0d/Flag_of_Saudi_Arabia.svg/640px-Flag_of_Saudi_Arabia.svg.png",
+     ["saudi arabia"]),
+
+    ("🏳️ What country's flag is this?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Flag_of_Thailand.svg/640px-Flag_of_Thailand.svg.png",
+     ["thailand"]),
+
+    # --- Famous People ---
+    ("🧑 Who is this person?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Albert_Einstein_Head.jpg/480px-Albert_Einstein_Head.jpg",
+     ["einstein", "albert einstein"]),
+
+    ("🧑 Who is this person?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Lionel-Messi-Argentina-2022-FIFA-World-Cup_%28cropped%29.jpg/480px-Lionel-Messi-Argentina-2022-FIFA-World-Cup_%28cropped%29.jpg",
+     ["messi", "lionel messi"]),
+
+    ("🧑 Who is this person?",
+     "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a0/Cristiano_Ronaldo_2019.jpg/480px-Cristiano_Ronaldo_2019.jpg",
+     ["ronaldo", "cristiano ronaldo", "cr7"]),
 ]
 
 # ============================================================
@@ -521,7 +671,7 @@ async def on_message(message):
         if re.match(r"^\d+$", content):
             number = int(content)
             if ROLL_MIN <= number <= ROLL_MAX:
-                won = random.random() < 0.05
+                won = random.random() < 0.01
                 if won:
                     bot_roll = number
                 else:
@@ -570,6 +720,22 @@ async def on_message(message):
             else:
                 del quiz_active[ch_id]
                 await message.reply(f"❌ Wrong! The correct answer was **{q['answer']}**.")
+            return
+
+    # Visual Quiz answer — anyone can answer
+    if ch_id in vquiz_active and not message.content.startswith(PREFIX):
+        vq = vquiz_active[ch_id]
+        guess = message.content.strip().lower()
+        if any(guess == ans or ans in guess or guess in ans for ans in vq["answers"]):
+            pts = user_points.get(message.author.id, 0) + 15
+            user_points[message.author.id] = pts
+            del vquiz_active[ch_id]
+            embed = discord.Embed(
+                title="✅ Correct!",
+                description=f"{message.author.mention} got it! The answer was **{vq['answers'][0].title()}**.\nYou earned **15 points**! Total: **{pts} pts** 🎉",
+                color=discord.Color.green()
+            )
+            await message.channel.send(embed=embed)
             return
 
     await bot.process_commands(message)
@@ -679,6 +845,33 @@ async def quiz_cmd(ctx):
     if ch_id in quiz_active and quiz_active[ch_id]["question"] == q:
         del quiz_active[ch_id]
         await ctx.send(f"⏰ Time's up! The answer was **{a}**.")
+
+@bot.command(name="vquiz")
+async def vquiz_cmd(ctx):
+    ch_id = ctx.channel.id
+    if ch_id in vquiz_active:
+        return await ctx.send("⚠️ A visual quiz is already active in this channel! Answer it first.")
+    if ch_id in quiz_active:
+        return await ctx.send("⚠️ A text quiz is already active! Finish that one first.")
+
+    question, image_url, answers = random.choice(VISUAL_QUIZ_BANK)
+
+    vquiz_active[ch_id] = {"question": question, "answers": answers, "image_url": image_url}
+
+    embed = discord.Embed(
+        title="🖼️ Visual Quiz!",
+        description=f"**{question}**\n\n🕐 You have **45 seconds** — anyone can answer!\n_Type your answer in the chat._",
+        color=discord.Color.blurple()
+    )
+    embed.set_image(url=image_url)
+    embed.set_footer(text="15 points for correct answer! 🏆")
+    await ctx.send(embed=embed)
+
+    await asyncio.sleep(45)
+    if ch_id in vquiz_active and vquiz_active[ch_id]["image_url"] == image_url:
+        correct = vquiz_active[ch_id]["answers"][0].title()
+        del vquiz_active[ch_id]
+        await ctx.send(f"⏰ Time's up! Nobody got it. The answer was **{correct}**.")
 
 @bot.command(name="points")
 async def points_cmd(ctx, member: discord.Member = None):
