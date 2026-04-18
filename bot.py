@@ -4,10 +4,9 @@ import asyncio
 import json
 import re
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from threading import Thread
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import aiohttp
 import random
 
 def utcnow():
@@ -34,7 +33,6 @@ Thread(target=keep_alive, daemon=True).start()
 # CONFIG
 # ============================================================
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "")
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 PREFIX = "!"
 COOLDOWN_SECONDS = 5
 ADMIN_ROLES = ["Owner", "Management"]
@@ -50,7 +48,7 @@ intents.message_content = True
 intents.members = True
 intents.guilds = True
 
-bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None)
+bot = commands.Bot(command_prefix=commands.when_mentioned_or("!", "/"), intents=intents, help_command=None)
 
 # ============================================================
 # STATE
@@ -62,6 +60,9 @@ quiz_active = {}
 vquiz_active = {}
 warn_records = {}
 roll_cooldown = {}
+
+# ================= GAME STATE =================
+game_sessions = {}
 
 # ============================================================
 # HELPERS
@@ -82,47 +83,86 @@ def clean_ai_reply(text):
     return re.sub(r'\{.*\}', '', text, flags=re.DOTALL).strip()
 
 # ============================================================
-# AI
+# GAME LOGIC
 # ============================================================
-MEMBER_PROMPT = "You are a friendly Discord assistant. Short replies."
 
-ADMIN_PROMPT = """You are a Discord manager.
-If action needed → ONLY return JSON.
-NO TEXT with JSON.
+def new_game(user_id):
+    game_sessions[user_id] = {
+        "player_hp": 100,
+        "enemy_hp": 100
+    }
 
-Example:
-{"action":"ban_member","data":{"user_id":"123","reason":"spam"}}
-"""
+def game_status(user_id):
+    g = game_sessions[user_id]
+    return f"YOU: {g['player_hp']} ❤️ | ENEMY: {g['enemy_hp']} ❤️"
 
-async def call_groq(messages):
-    if not GROQ_API_KEY:
-        return "No API key"
+def game_move(user_id, action):
+    g = game_sessions[user_id]
 
-    headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-    payload = {"model": "llama-3.1-8b-instant", "messages": messages}
+    if action == "shoot":
+        dmg = random.randint(10, 25)
+        g["enemy_hp"] -= dmg
 
-    async with aiohttp.ClientSession() as session:
-        async with session.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers) as r:
-            data = await r.json()
-            return data["choices"][0]["message"]["content"]
+    elif action in ["up", "down", "left", "right"]:
+        if random.random() < 0.3:
+            return "🛡️ You dodged!"
 
-async def ask_ai(user_id, msg, admin=False):
-    prompt = ADMIN_PROMPT if admin else MEMBER_PROMPT
-    msgs = [{"role":"system","content":prompt},{"role":"user","content":msg}]
-    return await call_groq(msgs)
+    if g["enemy_hp"] > 0:
+        g["player_hp"] -= random.randint(5, 15)
+
+    if g["player_hp"] <= 0:
+        return "💀 You lost!"
+    if g["enemy_hp"] <= 0:
+        return "🎉 You won!"
+
+    return game_status(user_id)
 
 # ============================================================
-# ACTION EXECUTOR
+# BUTTON UI
 # ============================================================
-async def execute_action(guild, action_obj, channel):
-    action = action_obj.get("action")
-    data = action_obj.get("data", {})
 
-    if action == "ban_member":
-        member = guild.get_member(int(data["user_id"]))
-        if member:
-            await member.ban(reason=data.get("reason"))
-            await channel.send(f"🔨 Banned {member}")
+class GameView(discord.ui.View):
+    def __init__(self, user_id):
+        super().__init__(timeout=120)
+        self.user_id = user_id
+
+    async def interaction_check(self, interaction):
+        return interaction.user.id == self.user_id
+
+    async def update(self, interaction, action):
+        msg = game_move(self.user_id, action)
+        await interaction.response.edit_message(
+            content=f"🎮 **Pixel Battle Arena**\n{msg}",
+            view=self
+        )
+
+    @discord.ui.button(label="⬆️", style=discord.ButtonStyle.secondary, row=0)
+    async def up(self, interaction, button):
+        await self.update(interaction, "up")
+
+    @discord.ui.button(label="⬅️", style=discord.ButtonStyle.secondary, row=1)
+    async def left(self, interaction, button):
+        await self.update(interaction, "left")
+
+    @discord.ui.button(label="💥 Shoot", style=discord.ButtonStyle.danger, row=1)
+    async def shoot(self, interaction, button):
+        await self.update(interaction, "shoot")
+
+    @discord.ui.button(label="➡️", style=discord.ButtonStyle.secondary, row=1)
+    async def right(self, interaction, button):
+        await self.update(interaction, "right")
+
+    @discord.ui.button(label="⬇️", style=discord.ButtonStyle.secondary, row=2)
+    async def down(self, interaction, button):
+        await self.update(interaction, "down")
+
+    @discord.ui.button(label="🔄 Restart", style=discord.ButtonStyle.success, row=3)
+    async def restart(self, interaction, button):
+        new_game(self.user_id)
+        await interaction.response.edit_message(
+            content="🎮 **Pixel Battle Arena**\nGame restarted!",
+            view=self
+        )
 
 # ============================================================
 # EVENTS
@@ -175,28 +215,16 @@ async def on_message(message):
 # ============================================================
 # COMMANDS
 # ============================================================
+
+@bot.command()
+async def battle(ctx):
+    new_game(ctx.author.id)
+    view = GameView(ctx.author.id)
+    await ctx.send("🎮 **Pixel Battle Arena**\n" + game_status(ctx.author.id), view=view)
+
 @bot.command()
 async def ai(ctx, *, text):
-    user_id = ctx.author.id
-    now = utcnow()
-
-    if user_id in user_last_called:
-        if (now - user_last_called[user_id]).total_seconds() < COOLDOWN_SECONDS:
-            return await ctx.send("Cooldown")
-
-    user_last_called[user_id] = now
-
-    admin = has_admin_role(ctx.author)
-    reply = await ask_ai(user_id, text, admin)
-
-    action = extract_json_action(reply)
-
-    if action:
-        return await execute_action(ctx.guild, action, ctx.channel)
-
-    clean = clean_ai_reply(reply)
-    if clean:
-        await ctx.reply(clean)
+    await ctx.reply("AI disabled.")
 
 @bot.command()
 async def quiz(ctx):
