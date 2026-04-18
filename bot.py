@@ -48,7 +48,7 @@ intents.message_content = True
 intents.members = True
 intents.guilds = True
 
-bot = commands.Bot(command_prefix=commands.when_mentioned_or("!", "/"), intents=intents, help_command=None)
+bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None)
 
 # ============================================================
 # STATE
@@ -61,7 +61,7 @@ vquiz_active = {}
 warn_records = {}
 roll_cooldown = {}
 
-# ================= GAME STATE =================
+# GAME STATE
 game_sessions = {}
 
 # ============================================================
@@ -73,19 +73,9 @@ def has_admin_role(member):
 def is_roll_channel(channel):
     return channel.id == ROLL_CHANNEL_ID
 
-def extract_json_action(text):
-    try:
-        return json.loads(text) if text.strip().startswith("{") else None
-    except:
-        return None
-
-def clean_ai_reply(text):
-    return re.sub(r'\{.*\}', '', text, flags=re.DOTALL).strip()
-
 # ============================================================
 # GAME LOGIC
 # ============================================================
-
 def new_game(user_id):
     game_sessions[user_id] = {
         "player_hp": 100,
@@ -100,8 +90,7 @@ def game_move(user_id, action):
     g = game_sessions[user_id]
 
     if action == "shoot":
-        dmg = random.randint(10, 25)
-        g["enemy_hp"] -= dmg
+        g["enemy_hp"] -= random.randint(10, 25)
 
     elif action in ["up", "down", "left", "right"]:
         if random.random() < 0.3:
@@ -120,7 +109,6 @@ def game_move(user_id, action):
 # ============================================================
 # BUTTON UI
 # ============================================================
-
 class GameView(discord.ui.View):
     def __init__(self, user_id):
         super().__init__(timeout=120)
