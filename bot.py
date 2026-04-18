@@ -4,9 +4,10 @@ import asyncio
 import json
 import re
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from threading import Thread
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import aiohttp
 import random
 
 def utcnow():
@@ -34,8 +35,6 @@ Thread(target=keep_alive, daemon=True).start()
 # ============================================================
 DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "")
 PREFIX = "!"
-COOLDOWN_SECONDS = 5
-ADMIN_ROLES = ["Owner", "Management"]
 ROLL_CHANNEL_ID = 1490276530452955246
 ROLL_MIN = 1
 ROLL_MAX = 350
@@ -53,104 +52,19 @@ bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None)
 # ============================================================
 # STATE
 # ============================================================
-user_last_called = {}
-conversation_history = {}
-user_points = {}
 quiz_active = {}
 vquiz_active = {}
-warn_records = {}
 roll_cooldown = {}
-
-# GAME STATE
-game_sessions = {}
+wordchain_games = {}
 
 # ============================================================
-# HELPERS
+# FREE DICTIONARY CHECK
 # ============================================================
-def has_admin_role(member):
-    return member.guild.owner_id == member.id or any(r.name in ADMIN_ROLES for r in member.roles)
-
-def is_roll_channel(channel):
-    return channel.id == ROLL_CHANNEL_ID
-
-# ============================================================
-# GAME LOGIC
-# ============================================================
-def new_game(user_id):
-    game_sessions[user_id] = {
-        "player_hp": 100,
-        "enemy_hp": 100
-    }
-
-def game_status(user_id):
-    g = game_sessions[user_id]
-    return f"YOU: {g['player_hp']} ❤️ | ENEMY: {g['enemy_hp']} ❤️"
-
-def game_move(user_id, action):
-    g = game_sessions[user_id]
-
-    if action == "shoot":
-        g["enemy_hp"] -= random.randint(10, 25)
-
-    elif action in ["up", "down", "left", "right"]:
-        if random.random() < 0.3:
-            return "🛡️ You dodged!"
-
-    if g["enemy_hp"] > 0:
-        g["player_hp"] -= random.randint(5, 15)
-
-    if g["player_hp"] <= 0:
-        return "💀 You lost!"
-    if g["enemy_hp"] <= 0:
-        return "🎉 You won!"
-
-    return game_status(user_id)
-
-# ============================================================
-# BUTTON UI
-# ============================================================
-class GameView(discord.ui.View):
-    def __init__(self, user_id):
-        super().__init__(timeout=120)
-        self.user_id = user_id
-
-    async def interaction_check(self, interaction):
-        return interaction.user.id == self.user_id
-
-    async def update(self, interaction, action):
-        msg = game_move(self.user_id, action)
-        await interaction.response.edit_message(
-            content=f"🎮 **Pixel Battle Arena**\n{msg}",
-            view=self
-        )
-
-    @discord.ui.button(label="⬆️", style=discord.ButtonStyle.secondary, row=0)
-    async def up(self, interaction, button):
-        await self.update(interaction, "up")
-
-    @discord.ui.button(label="⬅️", style=discord.ButtonStyle.secondary, row=1)
-    async def left(self, interaction, button):
-        await self.update(interaction, "left")
-
-    @discord.ui.button(label="💥 Shoot", style=discord.ButtonStyle.danger, row=1)
-    async def shoot(self, interaction, button):
-        await self.update(interaction, "shoot")
-
-    @discord.ui.button(label="➡️", style=discord.ButtonStyle.secondary, row=1)
-    async def right(self, interaction, button):
-        await self.update(interaction, "right")
-
-    @discord.ui.button(label="⬇️", style=discord.ButtonStyle.secondary, row=2)
-    async def down(self, interaction, button):
-        await self.update(interaction, "down")
-
-    @discord.ui.button(label="🔄 Restart", style=discord.ButtonStyle.success, row=3)
-    async def restart(self, interaction, button):
-        new_game(self.user_id)
-        await interaction.response.edit_message(
-            content="🎮 **Pixel Battle Arena**\nGame restarted!",
-            view=self
-        )
+async def is_valid_word(word):
+    url = f"https://api.dictionaryapi.dev/api/v2/entries/en/{word}"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as r:
+            return r.status == 200
 
 # ============================================================
 # EVENTS
@@ -164,8 +78,56 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # Roll system
-    if message.guild and is_roll_channel(message.channel):
+    uid = message.author.id
+
+    # ================= WORDCHAIN =================
+    if uid in wordchain_games:
+        game = wordchain_games[uid]
+
+        if message.content.lower() == "!end":
+            del wordchain_games[uid]
+            await message.reply("Game ended.")
+            return
+
+        user_word = message.content.lower()
+
+        if not user_word.isalpha():
+            await message.reply("❌ Only letters allowed")
+            return
+
+        if not await is_valid_word(user_word):
+            await message.reply("❌ Not a real English word")
+            return
+
+        if user_word in game["used"]:
+            await message.reply("❌ Already used")
+            return
+
+        if not user_word.startswith(game["last_letter"]):
+            await message.reply(f"❌ Must start with '{game['last_letter']}'")
+            return
+
+        game["used"].add(user_word)
+
+        # bot tries random words until valid
+        for _ in range(50):
+            candidate = random.choice(["apple","tiger","rat","tree","egg","grape","rose","sun","night","tea"])
+            if candidate not in game["used"] and candidate.startswith(user_word[-1]):
+                bot_word = candidate
+                break
+        else:
+            del wordchain_games[uid]
+            await message.reply("🎉 You win! No words left.")
+            return
+
+        game["used"].add(bot_word)
+        game["last_letter"] = bot_word[-1]
+
+        await message.reply(bot_word)
+        return
+
+    # ================= ROLL =================
+    if message.guild and message.channel.id == ROLL_CHANNEL_ID:
         if re.match(r"^\d+$", message.content):
             now = utcnow()
             last = roll_cooldown.get(message.author.id)
@@ -183,7 +145,7 @@ async def on_message(message):
                     await message.reply("❌ Try again")
                 return
 
-    # Quiz
+    # ================= QUIZ =================
     ch = message.channel.id
 
     if ch in quiz_active and ch not in vquiz_active:
@@ -205,10 +167,23 @@ async def on_message(message):
 # ============================================================
 
 @bot.command()
-async def battle(ctx):
-    new_game(ctx.author.id)
-    view = GameView(ctx.author.id)
-    await ctx.send("🎮 **Pixel Battle Arena**\n" + game_status(ctx.author.id), view=view)
+async def game(ctx):
+    await ctx.send("🎮 Available Games:\n• !wordchain")
+
+@bot.command()
+async def wordchain(ctx):
+    start = random.choice(["apple","tiger","rose","night","tea"])
+    wordchain_games[ctx.author.id] = {
+        "last_letter": start[-1],
+        "used": set([start])
+    }
+    await ctx.send(f"Start word: **{start}**\nNext must start with '{start[-1]}'")
+
+@bot.command()
+async def end(ctx):
+    if ctx.author.id in wordchain_games:
+        del wordchain_games[ctx.author.id]
+        await ctx.send("Game ended.")
 
 @bot.command()
 async def ai(ctx, *, text):
